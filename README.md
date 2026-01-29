@@ -1,5 +1,7 @@
 # Lua Code Analyzer Service
 
+_A temporary unofficial fork of rgajdos147 LuaGraphCreator, et. al._
+
 Dapr-based microservice for analyzing Lua source code and building knowledge graphs.
 
 ## Overview
