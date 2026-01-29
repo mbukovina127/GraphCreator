@@ -1,0 +1,33 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: rabbitmq-pubsub
+  namespace: parsers
+spec:
+  type: pubsub.rabbitmq
+  version: v1
+  metadata:
+    - name: connectionString
+      secretKeyRef:
+        name: rabbitmq-secret
+        key: connection-string
+    - name: durable
+      value: "true"
+    - name: deletedWhenUnused
+      value: "false"
+    - name: autoAck
+      value: "false"
+    - name: deliveryMode
+      value: "2" # Persistent messages
+    - name: prefetchCount
+      value: "1" # Process one message at a time
+    - name: reconnectWait
+      value: "5s"
+    - name: maxLen
+      value: "100000"
+    - name: maxLenBytes
+      value: "0" # No limit
+scopes:
+  - lua-code-analyzer
+  - graph-store-adapter
+  - api-program

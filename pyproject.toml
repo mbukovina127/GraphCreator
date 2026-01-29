@@ -1,0 +1,17 @@
+[project]
+name = "lua-code-analyzer"
+version = "1.0.0"
+description = "Lua code analyzer microservice with Dapr integration"
+requires-python = ">=3.11"
+
+[tool.pylance]
+extraPaths = ["src"]
+
+[tool.pyright]
+extraPaths = ["src"]
+pythonVersion = "3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"

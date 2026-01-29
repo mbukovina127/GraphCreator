@@ -1,0 +1,42 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: lua-code-analyzer-scaledobject
+  namespace: parsers
+spec:
+  scaleTargetRef:
+    name: lua-code-analyzer
+  # Scale to zero when idle
+  minReplicaCount: 0
+  maxReplicaCount: 5
+  # How long to wait after last trigger before scaling down
+  cooldownPeriod: 300 # 5 minutes
+  # Polling interval for checking triggers
+  pollingInterval: 30
+
+  triggers:
+    # Scale based on RabbitMQ queue length
+    - type: rabbitmq
+      metadata:
+        # Queue name to monitor
+        queueName: parser-code-tasks
+        # Scale up when there are this many messages per replica
+        queueLength: "5"
+        # RabbitMQ host from secret
+        hostFromEnv: RABBITMQ_HOST
+        # Protocol to use
+        protocol: amqp
+      authenticationRef:
+        name: rabbitmq-trigger-auth
+
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: rabbitmq-trigger-auth
+  namespace: parsers
+spec:
+  secretTargetRef:
+    - parameter: host
+      name: rabbitmq-secret
+      key: connection-string

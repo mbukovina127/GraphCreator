@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lua-code-analyzer
+  namespace: parsers
+  labels:
+    app: lua-code-analyzer
+    component: parser
+spec:
+  replicas: 0 # Controlled by KEDA
+  selector:
+    matchLabels:
+      app: lua-code-analyzer
+  template:
+    metadata:
+      labels:
+        app: lua-code-analyzer
+        component: parser
+      annotations:
+        # Dapr sidecar annotations
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "lua-code-analyzer"
+        dapr.io/app-port: "8080"
+        dapr.io/app-protocol: "http"
+        dapr.io/log-level: "info"
+        dapr.io/enable-metrics: "true"
+        dapr.io/metrics-port: "9090"
+    spec:
+      serviceAccountName: parsers-service-account
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: lua-code-analyzer
+          image: registry.example.com/softvis/lua-code-analyzer:latest
+          imagePullPolicy: Always
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          env:
+            - name: DAPR_HTTP_PORT
+              value: "3500"
+            - name: PUBSUB_NAME
+              value: "rabbitmq-pubsub"
+            - name: GRAPH_STORE_ADAPTER_APP_ID
+              value: "graph-store-adapter"
+            - name: APP_PORT
+              value: "8080"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          # Temporary storage for ZIP extraction
+          volumeMounts:
+            - name: tmp-storage
+              mountPath: /tmp
+          # Health probes
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+      volumes:
+        - name: tmp-storage
+          emptyDir:
+            sizeLimit: 1Gi
+      # Graceful shutdown
+      terminationGracePeriodSeconds: 60

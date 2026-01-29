@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: lua-code-analyzer
+  namespace: parsers
+  labels:
+    app: lua-code-analyzer
+spec:
+  type: ClusterIP
+  selector:
+    app: lua-code-analyzer
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+    - name: dapr-metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP

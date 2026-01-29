@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: parsers
+  labels:
+    name: parsers
+    app.kubernetes.io/part-of: softvis
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: parsers-service-account
+  namespace: parsers
+
+---
+# Network policy: Allow ingress from messaging namespace (RabbitMQ via Dapr)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dapr-sidecar
+  namespace: parsers
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow Dapr sidecar communication
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: dapr-system
+      ports:
+        - port: 8080
+          protocol: TCP
+        - port: 9090
+          protocol: TCP
+    # Allow intra-namespace communication
+    - from:
+        - podSelector: {}
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+    # Allow Dapr sidecar egress
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: dapr-system
+    # Allow messaging namespace (RabbitMQ)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: messaging
+    # Allow database namespace (Graph Store Adapter)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: database
+    # Allow infrastructure namespace (Prometheus scraping)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: infrastructure

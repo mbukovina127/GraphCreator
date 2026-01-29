@@ -1,0 +1,1287 @@
+{
+  "lua_graph": {
+    "vertices": [
+      {
+        "_key": "1",
+        "ast_id": 140145019162800,
+        "type": "chunk",
+        "start_byte": 1,
+        "end_byte": 233,
+        "text": "local x = 10\nlocal y = 20\n\nfunction add(a, b)\n    return a + b\nend\n\nfunction greet(name)\n    if name then\n        print(\"Hello, \" .. name)\n    else\n        print(\"Hello, World!\")\n    end\nend\n\nlocal result = add(x, y)\ngreet(\"Roman\")\n"
+      },
+      {
+        "_key": "2",
+        "ast_id": 140145014120944,
+        "type": "variable_declaration",
+        "start_byte": 1,
+        "end_byte": 13,
+        "text": "local x = 10"
+      },
+      {
+        "_key": "3",
+        "ast_id": 140145014121136,
+        "type": "local",
+        "start_byte": 1,
+        "end_byte": 6,
+        "text": "local"
+      },
+      {
+        "_key": "4",
+        "ast_id": 140145014121144,
+        "type": "assignment_statement",
+        "start_byte": 7,
+        "end_byte": 13,
+        "text": "x = 10"
+      },
+      {
+        "_key": "5",
+        "ast_id": 140145014309920,
+        "type": "variable_list",
+        "start_byte": 7,
+        "end_byte": 8,
+        "text": "x"
+      },
+      {
+        "_key": "6",
+        "ast_id": 140145013552016,
+        "type": "identifier",
+        "start_byte": 7,
+        "end_byte": 8,
+        "text": "x"
+      },
+      {
+        "_key": "7",
+        "ast_id": 140145014309928,
+        "type": "=",
+        "start_byte": 9,
+        "end_byte": 10,
+        "text": "="
+      },
+      {
+        "_key": "8",
+        "ast_id": 140145014309936,
+        "type": "expression_list",
+        "start_byte": 11,
+        "end_byte": 13,
+        "text": "10"
+      },
+      {
+        "_key": "9",
+        "ast_id": 140145019058288,
+        "type": "number",
+        "start_byte": 11,
+        "end_byte": 13,
+        "text": "10"
+      },
+      {
+        "_key": "10",
+        "ast_id": 140145014126800,
+        "type": "variable_declaration",
+        "start_byte": 14,
+        "end_byte": 26,
+        "text": "local y = 20"
+      },
+      {
+        "_key": "11",
+        "ast_id": 140145014126704,
+        "type": "local",
+        "start_byte": 14,
+        "end_byte": 19,
+        "text": "local"
+      },
+      {
+        "_key": "12",
+        "ast_id": 140145014126712,
+        "type": "assignment_statement",
+        "start_byte": 20,
+        "end_byte": 26,
+        "text": "y = 20"
+      },
+      {
+        "_key": "13",
+        "ast_id": 140145014310928,
+        "type": "variable_list",
+        "start_byte": 20,
+        "end_byte": 21,
+        "text": "y"
+      },
+      {
+        "_key": "14",
+        "ast_id": 140145014126416,
+        "type": "identifier",
+        "start_byte": 20,
+        "end_byte": 21,
+        "text": "y"
+      },
+      {
+        "_key": "15",
+        "ast_id": 140145014310936,
+        "type": "=",
+        "start_byte": 22,
+        "end_byte": 23,
+        "text": "="
+      },
+      {
+        "_key": "16",
+        "ast_id": 140145014310944,
+        "type": "expression_list",
+        "start_byte": 24,
+        "end_byte": 26,
+        "text": "20"
+      },
+      {
+        "_key": "17",
+        "ast_id": 140145014126512,
+        "type": "number",
+        "start_byte": 24,
+        "end_byte": 26,
+        "text": "20"
+      },
+      {
+        "_key": "18",
+        "ast_id": 140145014128336,
+        "type": "function_declaration",
+        "start_byte": 28,
+        "end_byte": 67,
+        "text": "function add(a, b)\n    return a + b\nend"
+      },
+      {
+        "_key": "19",
+        "ast_id": 140145014311600,
+        "type": "function",
+        "start_byte": 28,
+        "end_byte": 36,
+        "text": "function"
+      },
+      {
+        "_key": "20",
+        "ast_id": 140145014127184,
+        "type": "identifier",
+        "start_byte": 37,
+        "end_byte": 40,
+        "text": "add"
+      },
+      {
+        "_key": "21",
+        "ast_id": 140145014311376,
+        "type": "parameters",
+        "start_byte": 40,
+        "end_byte": 46,
+        "text": "(a, b)"
+      },
+      {
+        "_key": "22",
+        "ast_id": 140145014311040,
+        "type": "(",
+        "start_byte": 40,
+        "end_byte": 41,
+        "text": "("
+      },
+      {
+        "_key": "23",
+        "ast_id": 140145014127472,
+        "type": "identifier",
+        "start_byte": 41,
+        "end_byte": 42,
+        "text": "a"
+      },
+      {
+        "_key": "24",
+        "ast_id": 140145014127376,
+        "type": ",",
+        "start_byte": 42,
+        "end_byte": 43,
+        "text": ","
+      },
+      {
+        "_key": "25",
+        "ast_id": 140145014127384,
+        "type": "identifier",
+        "start_byte": 44,
+        "end_byte": 45,
+        "text": "b"
+      },
+      {
+        "_key": "26",
+        "ast_id": 140145014311056,
+        "type": ")",
+        "start_byte": 45,
+        "end_byte": 46,
+        "text": ")"
+      },
+      {
+        "_key": "27",
+        "ast_id": 140145014311384,
+        "type": "block",
+        "start_byte": 51,
+        "end_byte": 63,
+        "text": "return a + b"
+      },
+      {
+        "_key": "28",
+        "ast_id": 140145014128240,
+        "type": "return_statement",
+        "start_byte": 51,
+        "end_byte": 63,
+        "text": "return a + b"
+      },
+      {
+        "_key": "29",
+        "ast_id": 140145014128144,
+        "type": "return",
+        "start_byte": 51,
+        "end_byte": 57,
+        "text": "return"
+      },
+      {
+        "_key": "30",
+        "ast_id": 140145014128152,
+        "type": "expression_list",
+        "start_byte": 58,
+        "end_byte": 63,
+        "text": "a + b"
+      },
+      {
+        "_key": "31",
+        "ast_id": 140145014127952,
+        "type": "binary_expression",
+        "start_byte": 58,
+        "end_byte": 63,
+        "text": "a + b"
+      },
+      {
+        "_key": "32",
+        "ast_id": 140145014127568,
+        "type": "identifier",
+        "start_byte": 58,
+        "end_byte": 59,
+        "text": "a"
+      },
+      {
+        "_key": "33",
+        "ast_id": 140145014311160,
+        "type": "+",
+        "start_byte": 60,
+        "end_byte": 61,
+        "text": "+"
+      },
+      {
+        "_key": "34",
+        "ast_id": 140145014127760,
+        "type": "identifier",
+        "start_byte": 62,
+        "end_byte": 63,
+        "text": "b"
+      },
+      {
+        "_key": "35",
+        "ast_id": 140145014311392,
+        "type": "end",
+        "start_byte": 64,
+        "end_byte": 67,
+        "text": "end"
+      },
+      {
+        "_key": "36",
+        "ast_id": 140145014180816,
+        "type": "function_declaration",
+        "start_byte": 69,
+        "end_byte": 191,
+        "text": "function greet(name)\n    if name then\n        print(\"Hello, \" .. name)\n    else\n        print(\"Hello, World!\")\n    end\nend"
+      },
+      {
+        "_key": "37",
+        "ast_id": 140145014313392,
+        "type": "function",
+        "start_byte": 69,
+        "end_byte": 77,
+        "text": "function"
+      },
+      {
+        "_key": "38",
+        "ast_id": 140145014177936,
+        "type": "identifier",
+        "start_byte": 78,
+        "end_byte": 83,
+        "text": "greet"
+      },
+      {
+        "_key": "39",
+        "ast_id": 140145014313280,
+        "type": "parameters",
+        "start_byte": 83,
+        "end_byte": 89,
+        "text": "(name)"
+      },
+      {
+        "_key": "40",
+        "ast_id": 140145014311824,
+        "type": "(",
+        "start_byte": 83,
+        "end_byte": 84,
+        "text": "("
+      },
+      {
+        "_key": "41",
+        "ast_id": 140145014178128,
+        "type": "identifier",
+        "start_byte": 84,
+        "end_byte": 88,
+        "text": "name"
+      },
+      {
+        "_key": "42",
+        "ast_id": 140145014311840,
+        "type": ")",
+        "start_byte": 88,
+        "end_byte": 89,
+        "text": ")"
+      },
+      {
+        "_key": "43",
+        "ast_id": 140145014313288,
+        "type": "block",
+        "start_byte": 94,
+        "end_byte": 187,
+        "text": "if name then\n        print(\"Hello, \" .. name)\n    else\n        print(\"Hello, World!\")\n    end"
+      },
+      {
+        "_key": "44",
+        "ast_id": 140145014180528,
+        "type": "if_statement",
+        "start_byte": 94,
+        "end_byte": 187,
+        "text": "if name then\n        print(\"Hello, \" .. name)\n    else\n        print(\"Hello, World!\")\n    end"
+      },
+      {
+        "_key": "45",
+        "ast_id": 140145018076464,
+        "type": "if",
+        "start_byte": 94,
+        "end_byte": 96,
+        "text": "if"
+      },
+      {
+        "_key": "46",
+        "ast_id": 140145014178224,
+        "type": "identifier",
+        "start_byte": 97,
+        "end_byte": 101,
+        "text": "name"
+      },
+      {
+        "_key": "47",
+        "ast_id": 140145018076480,
+        "type": "then",
+        "start_byte": 102,
+        "end_byte": 106,
+        "text": "then"
+      },
+      {
+        "_key": "48",
+        "ast_id": 140145018076488,
+        "type": "block",
+        "start_byte": 115,
+        "end_byte": 139,
+        "text": "print(\"Hello, \" .. name)"
+      },
+      {
+        "_key": "49",
+        "ast_id": 140145014179280,
+        "type": "function_call",
+        "start_byte": 115,
+        "end_byte": 139,
+        "text": "print(\"Hello, \" .. name)"
+      },
+      {
+        "_key": "50",
+        "ast_id": 140145014178416,
+        "type": "identifier",
+        "start_byte": 115,
+        "end_byte": 120,
+        "text": "print"
+      },
+      {
+        "_key": "51",
+        "ast_id": 140145014179192,
+        "type": "arguments",
+        "start_byte": 120,
+        "end_byte": 139,
+        "text": "(\"Hello, \" .. name)"
+      },
+      {
+        "_key": "52",
+        "ast_id": 140145014312944,
+        "type": "(",
+        "start_byte": 120,
+        "end_byte": 121,
+        "text": "("
+      },
+      {
+        "_key": "53",
+        "ast_id": 140145014179088,
+        "type": "binary_expression",
+        "start_byte": 121,
+        "end_byte": 138,
+        "text": "\"Hello, \" .. name"
+      },
+      {
+        "_key": "54",
+        "ast_id": 140145014178800,
+        "type": "string",
+        "start_byte": 121,
+        "end_byte": 130,
+        "text": "\"Hello, \""
+      },
+      {
+        "_key": "55",
+        "ast_id": 140145014312272,
+        "type": "\"",
+        "start_byte": 121,
+        "end_byte": 122,
+        "text": "\""
+      },
+      {
+        "_key": "56",
+        "ast_id": 140145014312280,
+        "type": "string_content",
+        "start_byte": 122,
+        "end_byte": 129,
+        "text": "Hello, "
+      },
+      {
+        "_key": "57",
+        "ast_id": 140145014312288,
+        "type": "\"",
+        "start_byte": 129,
+        "end_byte": 130,
+        "text": "\""
+      },
+      {
+        "_key": "58",
+        "ast_id": 140145014312728,
+        "type": "..",
+        "start_byte": 131,
+        "end_byte": 133,
+        "text": ".."
+      },
+      {
+        "_key": "59",
+        "ast_id": 140145014178896,
+        "type": "identifier",
+        "start_byte": 134,
+        "end_byte": 138,
+        "text": "name"
+      },
+      {
+        "_key": "60",
+        "ast_id": 140145014312960,
+        "type": ")",
+        "start_byte": 138,
+        "end_byte": 139,
+        "text": ")"
+      },
+      {
+        "_key": "61",
+        "ast_id": 140145018076496,
+        "type": "else_statement",
+        "start_byte": 144,
+        "end_byte": 179,
+        "text": "else\n        print(\"Hello, World!\")"
+      },
+      {
+        "_key": "62",
+        "ast_id": 140145014180432,
+        "type": "else",
+        "start_byte": 144,
+        "end_byte": 148,
+        "text": "else"
+      },
+      {
+        "_key": "63",
+        "ast_id": 140145014180440,
+        "type": "block",
+        "start_byte": 157,
+        "end_byte": 179,
+        "text": "print(\"Hello, World!\")"
+      },
+      {
+        "_key": "64",
+        "ast_id": 140145014180144,
+        "type": "function_call",
+        "start_byte": 157,
+        "end_byte": 179,
+        "text": "print(\"Hello, World!\")"
+      },
+      {
+        "_key": "65",
+        "ast_id": 140145014179568,
+        "type": "identifier",
+        "start_byte": 157,
+        "end_byte": 162,
+        "text": "print"
+      },
+      {
+        "_key": "66",
+        "ast_id": 140145014180056,
+        "type": "arguments",
+        "start_byte": 162,
+        "end_byte": 179,
+        "text": "(\"Hello, World!\")"
+      },
+      {
+        "_key": "67",
+        "ast_id": 140145014313168,
+        "type": "(",
+        "start_byte": 162,
+        "end_byte": 163,
+        "text": "("
+      },
+      {
+        "_key": "68",
+        "ast_id": 140145014179952,
+        "type": "string",
+        "start_byte": 163,
+        "end_byte": 178,
+        "text": "\"Hello, World!\""
+      },
+      {
+        "_key": "69",
+        "ast_id": 140145014313056,
+        "type": "\"",
+        "start_byte": 163,
+        "end_byte": 164,
+        "text": "\""
+      },
+      {
+        "_key": "70",
+        "ast_id": 140145014313064,
+        "type": "string_content",
+        "start_byte": 164,
+        "end_byte": 177,
+        "text": "Hello, World!"
+      },
+      {
+        "_key": "71",
+        "ast_id": 140145014313072,
+        "type": "\"",
+        "start_byte": 177,
+        "end_byte": 178,
+        "text": "\""
+      },
+      {
+        "_key": "72",
+        "ast_id": 140145014313184,
+        "type": ")",
+        "start_byte": 178,
+        "end_byte": 179,
+        "text": ")"
+      },
+      {
+        "_key": "73",
+        "ast_id": 140145018076504,
+        "type": "end",
+        "start_byte": 184,
+        "end_byte": 187,
+        "text": "end"
+      },
+      {
+        "_key": "74",
+        "ast_id": 140145014313296,
+        "type": "end",
+        "start_byte": 188,
+        "end_byte": 191,
+        "text": "end"
+      },
+      {
+        "_key": "75",
+        "ast_id": 140145014182352,
+        "type": "variable_declaration",
+        "start_byte": 193,
+        "end_byte": 217,
+        "text": "local result = add(x, y)"
+      },
+      {
+        "_key": "76",
+        "ast_id": 140145014182256,
+        "type": "local",
+        "start_byte": 193,
+        "end_byte": 198,
+        "text": "local"
+      },
+      {
+        "_key": "77",
+        "ast_id": 140145014182264,
+        "type": "assignment_statement",
+        "start_byte": 199,
+        "end_byte": 217,
+        "text": "result = add(x, y)"
+      },
+      {
+        "_key": "78",
+        "ast_id": 140145014313616,
+        "type": "variable_list",
+        "start_byte": 199,
+        "end_byte": 205,
+        "text": "result"
+      },
+      {
+        "_key": "79",
+        "ast_id": 140145014181200,
+        "type": "identifier",
+        "start_byte": 199,
+        "end_byte": 205,
+        "text": "result"
+      },
+      {
+        "_key": "80",
+        "ast_id": 140145014313624,
+        "type": "=",
+        "start_byte": 206,
+        "end_byte": 207,
+        "text": "="
+      },
+      {
+        "_key": "81",
+        "ast_id": 140145014313632,
+        "type": "expression_list",
+        "start_byte": 208,
+        "end_byte": 217,
+        "text": "add(x, y)"
+      },
+      {
+        "_key": "82",
+        "ast_id": 140145014182064,
+        "type": "function_call",
+        "start_byte": 208,
+        "end_byte": 217,
+        "text": "add(x, y)"
+      },
+      {
+        "_key": "83",
+        "ast_id": 140145014181296,
+        "type": "identifier",
+        "start_byte": 208,
+        "end_byte": 211,
+        "text": "add"
+      },
+      {
+        "_key": "84",
+        "ast_id": 140145014181976,
+        "type": "arguments",
+        "start_byte": 211,
+        "end_byte": 217,
+        "text": "(x, y)"
+      },
+      {
+        "_key": "85",
+        "ast_id": 140145014313504,
+        "type": "(",
+        "start_byte": 211,
+        "end_byte": 212,
+        "text": "("
+      },
+      {
+        "_key": "86",
+        "ast_id": 140145014181488,
+        "type": "identifier",
+        "start_byte": 212,
+        "end_byte": 213,
+        "text": "x"
+      },
+      {
+        "_key": "87",
+        "ast_id": 140145014181872,
+        "type": ",",
+        "start_byte": 213,
+        "end_byte": 214,
+        "text": ","
+      },
+      {
+        "_key": "88",
+        "ast_id": 140145014181680,
+        "type": "identifier",
+        "start_byte": 215,
+        "end_byte": 216,
+        "text": "y"
+      },
+      {
+        "_key": "89",
+        "ast_id": 140145014313528,
+        "type": ")",
+        "start_byte": 216,
+        "end_byte": 217,
+        "text": ")"
+      },
+      {
+        "_key": "90",
+        "ast_id": 140145014183312,
+        "type": "function_call",
+        "start_byte": 218,
+        "end_byte": 232,
+        "text": "greet(\"Roman\")"
+      },
+      {
+        "_key": "91",
+        "ast_id": 140145014182736,
+        "type": "identifier",
+        "start_byte": 218,
+        "end_byte": 223,
+        "text": "greet"
+      },
+      {
+        "_key": "92",
+        "ast_id": 140145014183224,
+        "type": "arguments",
+        "start_byte": 223,
+        "end_byte": 232,
+        "text": "(\"Roman\")"
+      },
+      {
+        "_key": "93",
+        "ast_id": 140145014313840,
+        "type": "(",
+        "start_byte": 223,
+        "end_byte": 224,
+        "text": "("
+      },
+      {
+        "_key": "94",
+        "ast_id": 140145014183120,
+        "type": "string",
+        "start_byte": 224,
+        "end_byte": 231,
+        "text": "\"Roman\""
+      },
+      {
+        "_key": "95",
+        "ast_id": 140145014313728,
+        "type": "\"",
+        "start_byte": 224,
+        "end_byte": 225,
+        "text": "\""
+      },
+      {
+        "_key": "96",
+        "ast_id": 140145014313736,
+        "type": "string_content",
+        "start_byte": 225,
+        "end_byte": 230,
+        "text": "Roman"
+      },
+      {
+        "_key": "97",
+        "ast_id": 140145014313744,
+        "type": "\"",
+        "start_byte": 230,
+        "end_byte": 231,
+        "text": "\""
+      },
+      {
+        "_key": "98",
+        "ast_id": 140145014313856,
+        "type": ")",
+        "start_byte": 231,
+        "end_byte": 232,
+        "text": ")"
+      }
+    ],
+    "edges": [
+      {
+        "_from": "nodes/1",
+        "_to": "nodes/2",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/2",
+        "_to": "nodes/3",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/2",
+        "_to": "nodes/4",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/4",
+        "_to": "nodes/5",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/5",
+        "_to": "nodes/6",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/4",
+        "_to": "nodes/7",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/4",
+        "_to": "nodes/8",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/8",
+        "_to": "nodes/9",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/1",
+        "_to": "nodes/10",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/10",
+        "_to": "nodes/11",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/10",
+        "_to": "nodes/12",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/12",
+        "_to": "nodes/13",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/13",
+        "_to": "nodes/14",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/12",
+        "_to": "nodes/15",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/12",
+        "_to": "nodes/16",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/16",
+        "_to": "nodes/17",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/1",
+        "_to": "nodes/18",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/18",
+        "_to": "nodes/19",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/18",
+        "_to": "nodes/20",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/18",
+        "_to": "nodes/21",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/21",
+        "_to": "nodes/22",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/21",
+        "_to": "nodes/23",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/21",
+        "_to": "nodes/24",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/21",
+        "_to": "nodes/25",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/21",
+        "_to": "nodes/26",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/18",
+        "_to": "nodes/27",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/27",
+        "_to": "nodes/28",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/28",
+        "_to": "nodes/29",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/28",
+        "_to": "nodes/30",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/30",
+        "_to": "nodes/31",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/31",
+        "_to": "nodes/32",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/31",
+        "_to": "nodes/33",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/31",
+        "_to": "nodes/34",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/18",
+        "_to": "nodes/35",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/1",
+        "_to": "nodes/36",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/36",
+        "_to": "nodes/37",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/36",
+        "_to": "nodes/38",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/36",
+        "_to": "nodes/39",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/39",
+        "_to": "nodes/40",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/39",
+        "_to": "nodes/41",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/39",
+        "_to": "nodes/42",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/36",
+        "_to": "nodes/43",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/43",
+        "_to": "nodes/44",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/44",
+        "_to": "nodes/45",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/44",
+        "_to": "nodes/46",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/44",
+        "_to": "nodes/47",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/44",
+        "_to": "nodes/48",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/48",
+        "_to": "nodes/49",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/49",
+        "_to": "nodes/50",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/49",
+        "_to": "nodes/51",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/51",
+        "_to": "nodes/52",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/51",
+        "_to": "nodes/53",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/53",
+        "_to": "nodes/54",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/54",
+        "_to": "nodes/55",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/54",
+        "_to": "nodes/56",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/54",
+        "_to": "nodes/57",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/53",
+        "_to": "nodes/58",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/53",
+        "_to": "nodes/59",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/51",
+        "_to": "nodes/60",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/44",
+        "_to": "nodes/61",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/61",
+        "_to": "nodes/62",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/61",
+        "_to": "nodes/63",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/63",
+        "_to": "nodes/64",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/64",
+        "_to": "nodes/65",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/64",
+        "_to": "nodes/66",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/66",
+        "_to": "nodes/67",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/66",
+        "_to": "nodes/68",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/68",
+        "_to": "nodes/69",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/68",
+        "_to": "nodes/70",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/68",
+        "_to": "nodes/71",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/66",
+        "_to": "nodes/72",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/44",
+        "_to": "nodes/73",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/36",
+        "_to": "nodes/74",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/1",
+        "_to": "nodes/75",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/75",
+        "_to": "nodes/76",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/75",
+        "_to": "nodes/77",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/77",
+        "_to": "nodes/78",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/78",
+        "_to": "nodes/79",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/77",
+        "_to": "nodes/80",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/77",
+        "_to": "nodes/81",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/81",
+        "_to": "nodes/82",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/82",
+        "_to": "nodes/83",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/82",
+        "_to": "nodes/84",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/84",
+        "_to": "nodes/85",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/84",
+        "_to": "nodes/86",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/84",
+        "_to": "nodes/87",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/84",
+        "_to": "nodes/88",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/84",
+        "_to": "nodes/89",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/1",
+        "_to": "nodes/90",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/90",
+        "_to": "nodes/91",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/90",
+        "_to": "nodes/92",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/92",
+        "_to": "nodes/93",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/92",
+        "_to": "nodes/94",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/94",
+        "_to": "nodes/95",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/94",
+        "_to": "nodes/96",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/94",
+        "_to": "nodes/97",
+        "relation": "child_of"
+      },
+      {
+        "_from": "nodes/92",
+        "_to": "nodes/98",
+        "relation": "child_of"
+      }
+    ]
+  },
+  "knowledge_graph": {
+    "vertices": [],
+    "edges": []
+  },
+  "metadata": {
+    "total_nodes": 98,
+    "total_knowledge_nodes": 0,
+    "total_edges": 97,
+    "total_knowledge_edges": 0
+  }
+}
