@@ -31,3 +31,6 @@ testcontainers-rabbitmq>=0.0.1rc1
 # Mocking
 respx>=0.21.0
 aioresponses>=0.7.6
+
+# Scaling
+ray=>2.53.0
