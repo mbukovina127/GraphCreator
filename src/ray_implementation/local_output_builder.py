@@ -29,6 +29,7 @@ class LocalOuputBuilder (GraphOutputBuilder):
          
         # Counter for generating unique IDs
         self._node_counter = 1
+        self._id_counter_: Dict[str, int] = {}
         
         # Path to node ID mapping for quick lookups
         self._path_to_id: Dict[str, str] = {}
@@ -67,7 +68,10 @@ class LocalOuputBuilder (GraphOutputBuilder):
     #TODO: leaning towards a structure of filename:type:counter 
     # types: vr -varioble, fn -function, cl -call, 
     #
-    #
+    def gen_node_id_with_type(self, collection_name: str = "", type: str = ""):
+        if collection_name == "" or type == "":
+            return None
+        
     def get_next_node_id(self, collection_name: str = "nodes") -> str:
         """Generate next unique node ID"""
         node_id = str(self._node_counter)
