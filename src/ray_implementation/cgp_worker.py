@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Optional
 
 
 from code_analyzer import ASTManager
+from .local_symbol_table import SymbolTable
 from .graph_manager import GraphManager
 
 @ray.remote
@@ -13,9 +14,10 @@ class CGPWorker:
     """
     Ray Actor for analazing and creating a local cpg graph
     """
-    def __init__(self):
+    def __init__(self, worker_id: str):
         self.ast_manager = ASTManager() # TODO: doesn't have to be a singleton
-        self.graph_manager = GraphManager()
+        self.lst = SymbolTable(worker_id)
+        self.graph_manager = GraphManager(self.lst)
 
     def analyze_file(self, file_path: str):
         """creates ast and local cgp graph"""
