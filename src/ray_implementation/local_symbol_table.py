@@ -9,6 +9,7 @@ class SymbolID:
     scope_id: str
     name: str # variable or function name
     kind: Literal[
+        "file", # chunk
         "module",
         "function",
         "local_function",
@@ -54,13 +55,19 @@ class SymbolTable:
     def add_unresolved(self, symbol: SymbolID):
         self.unresolved[symbol.name] = symbol
     
-    def scope_lookup(self, scope_id, target:str) -> Optional[SymbolID]:
+    def clear_all(self):
+        self.scopes.clear()
+        self.exports.clear()
+        self.imports.clear()
+        self.unresolved.clear()
+
+    def scope_lookup_by_name(self, scope_id, target:str) -> Optional[SymbolID]:
         """
-        Intended purpose is to look up symbols and its node ids to create knowledge edges
+        Look upwards in the stack and find the symbol with matching name
         
         @return: symbol if found else None
         """
-        scope = self.scopes[scope_id]
+        scope = self.scopes.get(scope_id)
 
         while scope is not None:
             sym = scope.symbols.get(target)
@@ -69,6 +76,25 @@ class SymbolTable:
           
             scope = self.scopes[scope.parent] if scope.parent is not None else None
         return None
+
+    def scope_lookup_by_kind(self, scope_id, target:str) -> list:
+        """
+        Look upwards in the stack and find the symbol with matching kind
+
+        @return: `unordered list` of all found symbols in the same scope
+        """
+        scope = self.scopes.get(scope_id)
+        out = []
+
+        while scope is not None:
+            for name, sym in scope.symbols.values():
+                if sym.kind == target:
+                    out.append(sym)
+            if len(out) > 0:
+                return out
+            scope = self.scopes[scope.parent] if scope.parent is not None else None
+        return out
+
 
 #TODO maybe seperate lst logic from this
 class ScopeStack: 

@@ -1,6 +1,6 @@
 
 
-from typing import Optional
+from typing import List, Optional
 from .ast_utils import ASTUtils
 from .local_output_builder import LocalOuputBuilder
 from .local_symbol_table import SymbolTable, ScopeStack
@@ -15,8 +15,10 @@ class SymbolBuilder:
         self.edges = local_builder.get_collection("edges")
         self.knowledge_nodes = self.local_builder.get_collection("knowledge_nodes")
         self.knowledge_nodes = self.local_builder.get_collection("knowledge_edges")
+
+        self.parameter_stack: List = []
       
-    def __add__symbol(self, name: str, ast_node, kind: str):
+    def __add_symbol(self, name: str, ast_node, kind: str):
         """
         Adds symbol to current scope and local symbol table
         """
@@ -36,7 +38,7 @@ class SymbolBuilder:
         """
         return self.scope_stack.pop_scope()
     
-    def _create_declaration_symbol(self, type: str, node):
+    def _create_declaration_symbol(self, type: str, node) -> bool:
         """
         Create a declaration symbol in the current scope
         """
@@ -47,13 +49,36 @@ class SymbolBuilder:
             identifiers = ASTUtils.nodes_of_type(var_list, "identifier") # list in case of multiple declaration
             for ident in identifiers:
                 name = ident.text.decode("utf-8") if isinstance(ident.text, bytes) else ident.text
-                self.__add__symbol(name, node, kind)
-            # TODO: expresion handling
+                self.__add_symbol(name, node, kind)
+            # TODO: expresion handling            
+        
         elif type == "function":
-            pass  # TODO: implement function declaration symbol creation
-        return
+            kind = "function_declaration"
+            ident = ASTUtils.first_node_of_type(node, 'identifier') # ident 
+            if ident is not None:
+                name = ident.text.decode("utf-8") if isinstance(ident.text, bytes) else ident.text
+                self.__add_symbol(name, node, kind)
 
-    def walk(self, node, file: Optional[str] = None):
+                p = ASTUtils.first_node_of_type(node, 'parameters')
+                parameters = ASTUtils.nodes_of_type(p, 'identifier') # finds all parameters of the function
+                if parameters.__len__() > 0:
+                    self.parameter_stack.extend(parameters) # pushes them onto the stack as they need to be create inside inner scope
+        
+        elif type == "block":            
+            for param in self.parameter_stack: # Parameters of a function
+                kind = "local_var"
+                name = param.text.decode("utf-8") if isinstance(param.text, bytes) else param.text
+                self.__add_symbol(name, param, kind)
+
+        elif type == "module":
+            pass
+
+        elif type == "chunk":
+            pass
+        
+        return True
+    
+    def walk(self, node):
         """
         Recursively walk the AST and create symbols
         """
@@ -64,8 +89,8 @@ class SymbolBuilder:
             self._push_scope(node.id)
         
         # adding to local symbol table
-        type = ASTUtils.is_declaration_node(node)
-        if type.__len__() > 0:
+        type = ASTUtils.is_declaration_node(node) # TODO remake into a single function call
+        if type is not None:
             self._create_declaration_symbol(type, node)
 
         # walk
