@@ -6,8 +6,10 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-
-from ray_implemetation import * 
+# from ray_implementation.local_graph_queries import LocalGraphQueries
+# from ray_implementation.local_output_builder import LocalOuputBuilder
+# from ray_implementation.local_symbol_table import LocalSymbolTable
+# from ray_implementation.parallel_ast_inserter import ParallelASTInserter
 from code_analyzer import ASTManager
 
 
@@ -15,6 +17,8 @@ SAMPLE_LUA_SIMPLE = '''
 -- Simple Lua file for testing
 local x = 10
 local y = 20
+local z
+w = 10
 
 function add(a, b)
     return a + b
@@ -107,9 +111,8 @@ print("Done")
 
 
 
-#TEST Parrallel ast manager
 with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-    f.write(SAMPLE_LUA_COMPLEX)
+    f.write(SAMPLE_LUA_SIMPLE)
     f.flush()
 
     ast_manager = ASTManager()
@@ -119,22 +122,14 @@ with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
 
     print(f"Number of code blocks: {ast.root_node.child_count} ")
 
-    local_graph_builder = LocalOuputBuilder()
-    para_ast_inserter = ParallelASTInserter(local_graph_builder)
+    # local_graph_builder = LocalOuputBuilder()
+    # lst = LocalSymbolTable(worker_id="worker_1")
+    # para_ast_inserter = AST(local_graph_builder, lst, "worker_1", file_path=f.name)
 
-    para_ast_inserter.insert_node(ast.root_node, file=f.name)
-
-
-    local_graph_queries = LocalGraphQueries(local_graph_builder)
-    local_graph_queries.build_KG()
-
-    local_graph_builder.export_cpg_v1
+    # para_ast_inserter.insert_nodes(ast.root_node, file=f.name)
 
 
+    # local_graph_queries = LocalGraphQueries(local_graph_builder)
+    # local_graph_queries.build_KG()
 
-
-
-# rayWorker = CGPWorker()
-    print(ast)
-
-# rayWorker.analyze_file()
+    # local_graph_builder.export_cpg_v1
