@@ -1,6 +1,4 @@
-
-
-from typing import List, Optional
+from typing import List
 from .ast_utils import ASTUtils
 from .local_output_builder import LocalOuputBuilder
 from .local_symbol_table import SymbolTable, ScopeStack
@@ -50,7 +48,7 @@ class SymbolBuilder:
             for ident in identifiers:
                 name = ident.text.decode("utf-8") if isinstance(ident.text, bytes) else ident.text
                 self.__add_symbol(name, node, kind)
-            # TODO: expresion handling            
+            # TODO: expression handling
         
         elif type == "function":
             kind = "function_declaration"

@@ -24,8 +24,8 @@ class LocalOuputBuilder (GraphOutputBuilder):
         self._edges: List[Dict[str, Any]] = []
 
         # Knowledge graph collections (equivalent to knowledge_graph)
-        self._knowledge_nodes: Dict[str, Dict[str, Any]] = {}
-        self._knowledge_edges: List[Dict[str, Any]] = []
+        self.knowledge_nodes: Dict[str, Dict[str, Any]] = {}
+        self.knowledge_edges: List[Dict[str, Any]] = []
          
         # Counter for generating unique IDs
         self._node_counter = 1
@@ -39,8 +39,8 @@ class LocalOuputBuilder (GraphOutputBuilder):
             """Clear all stored data - useful for processing new projects"""
             self._nodes.clear()
             self._edges.clear()
-            self._knowledge_nodes.clear()
-            self._knowledge_edges.clear()
+            self.knowledge_nodes.clear()
+            self.knowledge_edges.clear()
             self._node_counter = 1
             self._path_to_id.clear()
 
@@ -55,9 +55,9 @@ class LocalOuputBuilder (GraphOutputBuilder):
         elif name == "edges":
             return EdgeCollectionProxy(self._edges)
         elif name == "knowledge_nodes":
-            return CollectionProxy(self._knowledge_nodes, self._path_to_id)
+            return CollectionProxy(self.knowledge_nodes, self._path_to_id)
         elif name == "knowledge_edges":
-            return EdgeCollectionProxy(self._knowledge_edges)
+            return EdgeCollectionProxy(self.knowledge_edges)
         else:
             raise ValueError(f"Unknown collection: {name}")
 
@@ -105,7 +105,7 @@ class LocalOuputBuilder (GraphOutputBuilder):
         if collection_name == "nodes":
             return self._nodes.get(key)
         elif collection_name == "knowledge_nodes":
-            return self._knowledge_nodes.get(key)
+            return self.knowledge_nodes.get(key)
         return None
     
     def get_nodes_by_type(self, collection_name: str, node_type: str) -> List[Dict[str, Any]]:
@@ -113,7 +113,7 @@ class LocalOuputBuilder (GraphOutputBuilder):
         if collection_name == "nodes":
             return [n for n in self._nodes.values() if n.get("type") == node_type]
         elif collection_name == "knowledge_nodes":
-            return [n for n in self._knowledge_nodes.values() if n.get("type") == node_type]
+            return [n for n in self.knowledge_nodes.values() if n.get("type") == node_type]
         return []
     
     def get_outbound_edges(self, collection_name: str, from_key: str) -> List[Dict[str, Any]]:
@@ -122,7 +122,7 @@ class LocalOuputBuilder (GraphOutputBuilder):
         if collection_name == "edges":
             return [e for e in self._edges if e.get("_from") == f"nodes/{from_key}"]
         elif collection_name == "knowledge_edges":
-            return [e for e in self._knowledge_edges if e.get("_from") == f"knowledge_nodes/{from_key}"]
+            return [e for e in self.knowledge_edges if e.get("_from") == f"knowledge_nodes/{from_key}"]
         return []
     
     def get_inbound_edges(self, collection_name: str, to_key: str) -> List[Dict[str, Any]]:
@@ -130,7 +130,7 @@ class LocalOuputBuilder (GraphOutputBuilder):
         if collection_name == "edges":
             return [e for e in self._edges if e.get("_to") == f"nodes/{to_key}"]
         elif collection_name == "knowledge_edges":
-            return [e for e in self._knowledge_edges if e.get("_to") == f"knowledge_nodes/{to_key}"]
+            return [e for e in self.knowledge_edges if e.get("_to") == f"knowledge_nodes/{to_key}"]
         return []
     
     def get_children(self, collection_name: str, parent_key: str, relation: str = None) -> List[Dict[str, Any]]:
@@ -140,8 +140,8 @@ class LocalOuputBuilder (GraphOutputBuilder):
             nodes = self._nodes
             node_prefix = "nodes"
         else:
-            edges = self._knowledge_edges
-            nodes = self._knowledge_nodes
+            edges = self.knowledge_edges
+            nodes = self.knowledge_nodes
             node_prefix = "knowledge_nodes"
         
         children = []
@@ -167,8 +167,8 @@ class LocalOuputBuilder (GraphOutputBuilder):
     def export_knowledge_graph(self) -> Dict[str, Any]:
         """Export the knowledge graph as a dictionary"""
         return {
-            "vertices": list(self._knowledge_nodes.values()),
-            "edges": self._knowledge_edges.copy()
+            "vertices": list(self.knowledge_nodes.values()),
+            "edges": self.knowledge_edges.copy()
         }
     
     def export_all(self) -> Dict[str, Any]:
@@ -185,18 +185,18 @@ class LocalOuputBuilder (GraphOutputBuilder):
         return {
             "vertices": {
                 "ast_nodes": list(self._nodes.values()),
-                "knowledge_nodes": list(self._knowledge_nodes.values())
+                "knowledge_nodes": list(self.knowledge_nodes.values())
             },
             "edges": {
                 "ast_edges": self._edges.copy(),
-                "knowledge_edges": self._knowledge_edges.copy()
+                "knowledge_edges": self.knowledge_edges.copy()
             },
             "name": "Lua Analysis Graph",
             "metadata": {
                 "total_nodes": len(self._nodes),
-                "total_knowledge_nodes": len(self._knowledge_nodes),
+                "total_knowledge_nodes": len(self.knowledge_nodes),
                 "total_edges": len(self._edges),
-                "total_knowledge_edges": len(self._knowledge_edges)
+                "total_knowledge_edges": len(self.knowledge_edges)
             }
         }
 
@@ -267,7 +267,7 @@ class LocalOuputBuilder (GraphOutputBuilder):
                 nodes.append(cpg_node)
 
         process_collection(self._nodes.values())
-        process_collection(self._knowledge_nodes.values(), is_knowledge=True)
+        process_collection(self.knowledge_nodes.values(), is_knowledge=True)
         
         # 2. Process all edges
         def process_edges(internal_edges, source_prefix, target_prefix):
@@ -294,7 +294,7 @@ class LocalOuputBuilder (GraphOutputBuilder):
                 edges.append(cpg_edge)
 
         process_edges(self._edges, "nodes", "nodes")
-        process_edges(self._knowledge_edges, "knowledge_nodes", "knowledge_nodes")
+        process_edges(self.knowledge_edges, "knowledge_nodes", "knowledge_nodes")
         
         return {
             "meta_data": {
@@ -344,8 +344,8 @@ class LocalOuputBuilder (GraphOutputBuilder):
         """Map internal relations to CPG v1 edge types"""
         # Special case: child_of can be CONTAINS for directories or AST_CHILD for code
         if relation == "child_of":
-            source_node = self._nodes.get(source_id) or self._knowledge_nodes.get(source_id)
-            target_node = self._nodes.get(target_id) or self._knowledge_nodes.get(target_id)
+            source_node = self._nodes.get(source_id) or self.knowledge_nodes.get(source_id)
+            target_node = self._nodes.get(target_id) or self.knowledge_nodes.get(target_id)
             
             if source_node and target_node:
                 if source_node.get("type") in ["dir", "file"] and target_node.get("type") in ["dir", "file"]:
@@ -383,7 +383,7 @@ class LocalOuputBuilder (GraphOutputBuilder):
         return {
             "nodes": len(self._nodes),
             "edges": len(self._edges),
-            "knowledge_nodes": len(self._knowledge_nodes),
-            "knowledge_edges": len(self._knowledge_edges)
+            "knowledge_nodes": len(self.knowledge_nodes),
+            "knowledge_edges": len(self.knowledge_edges)
         }
 
