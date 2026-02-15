@@ -3,6 +3,8 @@ import tempfile
 import sys
 import os
 
+from src.ray_implementation import bloatedmess
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from code_analyzer import ASTManager
@@ -17,6 +19,7 @@ a = 1
 SAMPLE_LUA_FUN_VERY_SIMPLE = """
 local function add(a,b)
     return a + b
+    
 add(a,b)
 """
 
@@ -40,13 +43,15 @@ SAMPLE_LUA_BASIC = """
 -- 
 local x = 10
 local y = 5
+local z = 3 + (10 + 2) 
 
 -- function that adds two numbers
 local function add(a,b)
     local result
     result = a + b
     return result
-
+    
+local return_value = add(1,2)
 print(add(x,y))
 """
 
@@ -63,9 +68,15 @@ with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
     symbolmanager = SymbolBuilder(local_builder=localBuilder, lst=lst, file_path=f.name)
 
     symbolmanager.walk(ast.root_node)
-
+    file_name = os.path.basename(f.name)
     knowledge_graph_creator = CPGBuilder(localBuilder, lst)
-    knowledge_graph_creator.build_cpg(ast.root_node, f.name)
+    knowledge_graph_creator.build_cpg(ast.root_node, file_name)
+
+
+
+    nodes = localBuilder.knowledge_nodes.values()
+    edges = localBuilder.knowledge_edges
+    bloatedmess.export_to_gephi_csv(nodes, edges)
 
     print(lst.exports.__len__())
 
@@ -123,8 +134,8 @@ class TestCPGBuilder:
 
             cpg_builder.build_cpg(ast.root_node, f.name)
 
-            assert builder._knowledge_nodes.__len__() == 4 # chunk and variable declaration + 2 identifiers
-            assert builder._knowledge_edges.__len__() == 3 # chunk contains variable, variable declared, variable assigned
+            assert builder.knowledge_nodes.__len__() == 4 # chunk and variable declaration + 2 identifiers
+            assert builder.knowledge_edges.__len__() == 3 # chunk contains variable, variable declared, variable assigned
 
     #TODO add block processing return statement, parameter relation, unresolved edges
     def test_simple_function(self):
@@ -143,5 +154,5 @@ class TestCPGBuilder:
 
             cpg_builder.build_cpg(ast.root_node, f.name)
 
-            print(builder._knowledge_nodes.__len__())
-            print(builder._knowledge_edges.__len__())
+            print(builder.knowledge_nodes.__len__())
+            print(builder.knowledge_edges.__len__())

@@ -14,15 +14,18 @@ class ASTUtils:
         return node.text.decode("utf-8") if isinstance(node.text, bytes) else node.text
 
     @staticmethod
-    def parent_node_of_type(root, target_type) -> Optional[tuple[Node, int]]:
+    def parent_node_of_type(root, target_type, threshold: int = 5) -> Optional[tuple[Node, int]]:
         """
         find the parent node of type target_type
+        @threshold: give up after default = `5` parents
         @return: node and the distance
         """
         dist = 0
         while root is not None:
             if root.type == target_type:
                 return (root, dist)
+            if dist >= threshold:
+                return None
             root = root.parent # FIXME test if works
             dist += 1
         return None
@@ -91,6 +94,7 @@ class ASTUtils:
             "function_declaration",
             "variable_declaration",
             "class_declaration",
+            "asssign"
             "block",
             "chunk",
             # TODO Add more types as needed
@@ -118,5 +122,14 @@ class ASTUtils:
         map = {
             "identifier": 'ident',
             "function_call": 'call',
+            "expression_list": 'exp_list'
         }
+        _is = map.get(node.type)
+        if _is is None:
+            return None
+        # possible place to further contextualize the node
         return map.get(node.type)
+
+    @staticmethod
+    def what_is_this_edge(self, ast_node):
+        pass

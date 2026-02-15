@@ -2,14 +2,13 @@
 Manager class to contain the pipeline of creating a local CPG graph from an AST 
 """
 #TODO: needs rework
-#TODO: implement ParrallelASTInserter -> LocalOutputBuiloder, LocalGraphQueries #TODO change name of Local Graph Queries
 from typing import Dict
 
 from tree_sitter import Tree
 from .local_output_builder import LocalOuputBuilder
 from .local_symbol_table import SymbolTable
 
-class GraphManager():
+class GraphManager:
     
     def __init__(self, lst: SymbolTable, ast: Dict[str, Tree] = {}):
         self._ast = ast
