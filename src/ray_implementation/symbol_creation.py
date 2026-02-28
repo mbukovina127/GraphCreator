@@ -9,10 +9,10 @@ class SymbolBuilder:
         self.local_builder = local_builder
         self.lst = lst
         self.scope_stack = ScopeStack(self.lst.worker_id, file_path, lst)
-        self.nodes = local_builder.get_collection("nodes")
-        self.edges = local_builder.get_collection("edges")
-        self.knowledge_nodes = self.local_builder.get_collection("knowledge_nodes")
-        self.knowledge_nodes = self.local_builder.get_collection("knowledge_edges")
+        # self.nodes = local_builder.get_collection("nodes")
+        # self.edges = local_builder.get_collection("edges")
+        # self.knowledge_nodes = self.local_builder.get_collection("knowledge_nodes")
+        # self.knowledge_edges = self.local_builder.get_collection("knowledge_edges")
 
         self.parameter_stack: List = []
       
@@ -64,7 +64,7 @@ class SymbolBuilder:
         
         elif type == "block":            
             for param in self.parameter_stack: # Parameters of a function
-                kind = "local_var"
+                kind = "parameter"
                 name = param.text.decode("utf-8") if isinstance(param.text, bytes) else param.text
                 self.__add_symbol(name, param, kind)
 

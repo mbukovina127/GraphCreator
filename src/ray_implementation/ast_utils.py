@@ -122,7 +122,11 @@ class ASTUtils:
         map = {
             "identifier": 'ident',
             "function_call": 'call',
-            "expression_list": 'exp_list'
+            "expression_list": 'exp_list',
+            "assignment_statement": 'assign',
+            "return_statement": 'ret',
+            "block": 'block',
+            "return_statement": 'return',
         }
         _is = map.get(node.type)
         if _is is None:
