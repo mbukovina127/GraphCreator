@@ -84,7 +84,7 @@ def export_to_gephi_csv(
             "Source": _strip_collection(edge["_from"]),
             "Target": _strip_collection(edge["_to"]),
             "Type": "Directed",
-            "relation": edge.get("relation"),
+            "Label": edge.get("relation"),
         }
 
         # Preserve any extra edge attributes

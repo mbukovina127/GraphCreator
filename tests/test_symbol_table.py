@@ -45,6 +45,8 @@ local x = 10
 local y = 5
 local z = 3 + (10 + 2) 
 
+y = x
+
 -- function that adds two numbers
 local function add(a,b)
     local result
@@ -70,9 +72,8 @@ with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
     symbolmanager.walk(ast.root_node)
     file_name = os.path.basename(f.name)
     knowledge_graph_creator = CPGBuilder(localBuilder, lst)
+
     knowledge_graph_creator.build_cpg(ast.root_node, file_name)
-
-
 
     nodes = localBuilder.knowledge_nodes.values()
     edges = localBuilder.knowledge_edges
