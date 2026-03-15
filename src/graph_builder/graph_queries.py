@@ -163,6 +163,10 @@ class GraphQueries:
 
     def find_module_calls(self) -> List[Dict[str, Any]]:
         """Find all module() function calls in the AST"""
+        # creates file --> module defines edge and module node
+        # finds function calls and looks for module identifier
+        # finds arguments and gets their strings
+
         results = []
         
         func_calls = self._get_nodes_by_type("function_call")
@@ -214,6 +218,10 @@ class GraphQueries:
 
     def insert_module_nodes(self):
         """Insert module nodes into knowledge graph"""
+        # creates file --> module defines edge and module node
+        # finds function calls and looks for module identifier
+        # finds arguments and gets their strings
+
         print("Inserting module nodes...")
         modules = self.find_module_calls()
         self._insert_nodes_and_edges("module", "defines", entities=modules)
@@ -285,6 +293,7 @@ class GraphQueries:
 
     def insert_local_var_nodes(self):
         """Insert local variable nodes"""
+        # gets chunk and creates variable declarations
         print("Inserting local variable nodes...")
         local_vars = self.find_local_var_declarations()
         self._insert_nodes_and_edges("local_var", "declares", entities=local_vars)
@@ -354,6 +363,9 @@ class GraphQueries:
 
     def insert_required_modules(self):
         """Insert required modules and create represents edges"""
+        #finds require calls and gets its string contents
+        #gets local variable with a very tidus method
+        # creates the nodes and edges with name represents
         print("Inserting required modules...")
         required = self.find_required_modules()
         
@@ -383,6 +395,12 @@ class GraphQueries:
 
     def insert_functions(self):
         """Insert function declarations into knowledge graph"""
+        # finds the chunk and then with an edge finds if it declares a module
+        # find function declarations for the file in AST
+        # get identifier or dot_index_expression
+        # check if its local sad thing is it doesn't change anything
+        # and assign the edge
+
         print("Inserting functions...")
         
         chunks = self._get_nodes_by_type("chunk")
