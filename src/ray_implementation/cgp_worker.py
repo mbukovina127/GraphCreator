@@ -17,17 +17,20 @@ class CGPWorker:
     def __init__(self, worker_id: str):
         self.ast_manager = ASTManager() # TODO: doesn't have to be a singleton
         self.lst = SymbolTable(worker_id)
-        self.graph_manager = GraphManager(self.lst)
+        self.graph_manager = GraphManager(self.lst, {})
 
     def analyze_file(self, file_path: str):
         """creates ast and local cgp graph"""
         try:
-            ast= self.ast_manager.parse(file_path)
+            ast = self.ast_manager.parse(file_path)
         except Exception as e:
             return # TODO: logging
-        graph = self.graph_manager.generate_graph(ast, file_path)
 
-        return graph
+        # Populating the graphs in
+        self.graph_manager.generate_graph(ast, file_path)
+        graphs = self.graph_manager.get_graphs()
+
+        return graphs
 
 
 

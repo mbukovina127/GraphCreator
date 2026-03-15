@@ -1,7 +1,8 @@
 from enum import Enum, auto
 
 class Context(Enum):
-    GLOBAL = auto()
+    CHUNK = auto()
+    MODULE = auto()
     VAR_DECL = auto()
     EXPRESSION = auto()
     ARGUMENTS = auto() #function calls
@@ -10,3 +11,4 @@ class Context(Enum):
     PARAMETERS = auto()
     BLOCK = auto()
     FUN_DECL = auto()
+

@@ -5,5 +5,6 @@ from .graph_manager import GraphManager
 from .local_symbol_table import SymbolTable
 from .symbol_creation import SymbolBuilder
 from .cpg_builder import CPGBuilder
+from .context_stack import ContextStack
 
-__all__ = ['CGPWorker', 'LocalOuputBuilder', 'GraphManager', 'SymbolTable', 'SymbolBuilder', 'CPGBuilder']
+__all__ = ['CGPWorker', 'LocalOuputBuilder', 'GraphManager', 'SymbolTable', 'SymbolBuilder', 'CPGBuilder', 'ContextStack']

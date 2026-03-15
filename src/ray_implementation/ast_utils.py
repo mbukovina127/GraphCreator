@@ -31,15 +31,20 @@ class ASTUtils:
         return None
 
     @staticmethod
-    def first_node_of_type(root, target_type: str) -> Optional[Node]:
+    def first_node_of_type(root, target_type: str, depth: int | None = None) -> Optional[Node]:
         """
         Helper function that returns the first node of type in ast subtree
         """
+        if depth is not None:
+            if depth < 0:
+                return None
+            depth -= 1
+
         if root.type == target_type:
             return root
         
         for child in root.children:
-            result = ASTUtils.first_node_of_type(child, target_type)
+            result = ASTUtils.first_node_of_type(child, target_type, depth)
             if result is not None:
                 return result
         return None
@@ -76,13 +81,12 @@ class ASTUtils:
         """
         return node.type in [
             "chunk",
-            # "function_declaration", # FIXME decide
             "block",
-            "do_statement",
-            "while_statement",
-            "for_statement",
-            "if_statement",
-            # TODO Add more types as needed
+            # "function_declaration", # FIXME decide
+            # "do_statement",
+            # "while_statement",
+            # "for_statement",
+            # "if_statement",
         ]
    
     @staticmethod
@@ -93,11 +97,9 @@ class ASTUtils:
         return node.type in [
             "function_declaration",
             "variable_declaration",
-            "class_declaration",
             "asssign"
             "block",
             "chunk",
-            # TODO Add more types as needed
         ]
     
     @staticmethod
@@ -106,9 +108,12 @@ class ASTUtils:
         Check if the AST node is a declaration node
         """
         map = {
-            "function_declaration": 'function',
+            "function_declaration": 'function_declaration',
             "variable_declaration": 'variable',
+            "assignment_statement": 'possible_variable',
             "block": 'block',
+            "chunk": 'file',
+            "function_call": 'module' # case for module definitions
         }
         
         return map.get(node.type)
@@ -124,7 +129,6 @@ class ASTUtils:
             "function_call": 'call',
             "expression_list": 'exp_list',
             "assignment_statement": 'assign',
-            "return_statement": 'ret',
             "block": 'block',
             "return_statement": 'return',
         }

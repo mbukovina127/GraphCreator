@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Literal
 from .ast_utils import ASTUtils
 from .local_output_builder import LocalOuputBuilder
 from .local_symbol_table import SymbolTable, ScopeStack
@@ -7,12 +7,8 @@ from .local_symbol_table import SymbolTable, ScopeStack
 class SymbolBuilder:
     def __init__(self, local_builder: LocalOuputBuilder, lst: SymbolTable, file_path: str):
         self.local_builder = local_builder
-        self.lst = lst
-        self.scope_stack = ScopeStack(self.lst.worker_id, file_path, lst)
-        # self.nodes = local_builder.get_collection("nodes")
-        # self.edges = local_builder.get_collection("edges")
-        # self.knowledge_nodes = self.local_builder.get_collection("knowledge_nodes")
-        # self.knowledge_edges = self.local_builder.get_collection("knowledge_edges")
+        self._lst = lst
+        self._scope_stack = ScopeStack(self._lst.worker_id, file_path, lst)
 
         self.parameter_stack: List = []
       
@@ -20,63 +16,123 @@ class SymbolBuilder:
         """
         Adds symbol to current scope and local symbol table
         """
-        self.scope_stack.add_to_scope(name, ast_node.id, kind, ast_node.start_byte, ast_node.end_byte) #FIXME probable wrong name
+        self._scope_stack.add_to_scope(name, ast_node.id, kind, ast_node.start_byte, ast_node.end_byte) #FIXME probable wrong name
         return
 
     def _push_scope(self, s_id: str):
         """
         Push a new scope onto the scope stack
         """
-        self.scope_stack.push_scope(s_id)
+        self._scope_stack.push_scope(s_id)
         return
     
     def _pop_scope(self):
         """
         Pop the current scope from the scope stack
         """
-        return self.scope_stack.pop_scope()
+        return self._scope_stack.pop_scope()
     
     def _create_declaration_symbol(self, type: str, node) -> bool:
         """
         Create a declaration symbol in the current scope
         """
-        if type == "variable":
-            kind = "local_var" if node.children[0].type == "local" else "global_var"
-            var_list = ASTUtils.first_node_of_type(node, "variable_list")
-            
-            identifiers = ASTUtils.nodes_of_type(var_list, "identifier") # list in case of multiple declaration
-            for ident in identifiers:
-                name = ident.text.decode("utf-8") if isinstance(ident.text, bytes) else ident.text
-                self.__add_symbol(name, node, kind)
+
+        def helper_variable_declarations(kind: str | Literal["global_var", "local_var"], symbol_node):
+            var_list = ASTUtils.first_node_of_type(symbol_node, "variable_list")
+            identifiers = ASTUtils.nodes_of_type(var_list, "identifier")  # list in case of multiple declaration
+            # find require calls
+
+            exp_list = ASTUtils.first_node_of_type(symbol_node,"expression_list")  # TODO: check if expression list is correct type
+            list = []  # list of module names
+            if exp_list is not None:
+                asssignments = [x for x in exp_list.children if x.type in ["identifier", "function_call"]]
+
+                if len(identifiers) == len(asssignments):
+                    for a in asssignments:
+                        if a is None:
+                            continue
+                        ident = ASTUtils.get_text(ASTUtils.first_node_of_type(a, "identifier"))
+                        if ident == "require":
+                            # find the module
+                            module = ASTUtils.first_node_of_type(a, "string_content")
+                            module_name = ASTUtils.get_text(module)
+                            list.append(module_name)
+                        else:
+                            list.append("")
+
+            for i, ident in enumerate(identifiers):
+                name = ASTUtils.get_text(ident)
+                if list.__len__() > 0 and list[i].__len__() > 0:
+                    kind = "local_module_representation" if kind == "local_var" else "module_representation"
+                    self.__add_symbol(name, symbol_node, kind)
+                    module_name = list[i]
+                    self._lst.add_import(name, module_name)
+                    pass
+                else:
+                    self.__add_symbol(name, symbol_node, kind)
+
             # TODO: expression handling
-        
-        elif type == "function":
-            kind = "function_declaration"
-            ident = ASTUtils.first_node_of_type(node, 'identifier') # ident 
-            if ident is not None:
-                name = ident.text.decode("utf-8") if isinstance(ident.text, bytes) else ident.text
-                self.__add_symbol(name, node, kind)
 
-                p = ASTUtils.first_node_of_type(node, 'parameters')
-                parameters = ASTUtils.nodes_of_type(p, 'identifier') # finds all parameters of the function
-                if parameters.__len__() > 0:
-                    self.parameter_stack.extend(parameters) # pushes them onto the stack as they need to be create inside inner scope
-        
-        elif type == "block":            
-            for param in self.parameter_stack: # Parameters of a function
-                kind = "parameter"
-                name = param.text.decode("utf-8") if isinstance(param.text, bytes) else param.text
-                self.__add_symbol(name, param, kind)
+        match type:
+            case "variable": # going from variable declaration is always local
+                kind = "local_var" if node.children[0].type == "local" else "global_var"  # Redundant, is always local
 
-        elif type == "module":
-            pass
+                helper_variable_declarations(kind, node)
 
-        elif type == "chunk":
-            pass
+            case "possible_variable": #going from assignment
+                if ASTUtils.parent_node_of_type(node, "variable_declaration", 1) is not None:
+                    return False # this is inside variable declaration
+
+                kind = "local_var" if node.parent.children[0].type == "local" else "global_var" # TEST
+
+                var_list = ASTUtils.first_node_of_type(node, "variable_list")
+                identifiers = ASTUtils.nodes_of_type(var_list, "identifier")
+
+                # more checks in case it is really a global variable and not just an assignment
+                if kind == "global_var":
+                    #first look into the lst
+                    for i in identifiers:
+                        ident = ASTUtils.get_text(i)
+                        if self._lst.scope_lookup_by_name(self._scope_stack.view_scope(), ident) is not None:
+                            return False # the variable was just an identfier and not a global variable
+
+                helper_variable_declarations(kind, node)
+
+            case "function_declaration":
+                kind = "local_function" if node.children[0].type == "local" else "global_function"
+                ident = ASTUtils.first_node_of_type(node, 'identifier') # ident
+
+                if ident is not None:
+                    name = ASTUtils.get_text(ident)
+                    self.__add_symbol(name, node, kind)
+
+                    p = ASTUtils.first_node_of_type(node, 'parameters')
+                    parameters = ASTUtils.nodes_of_type(p, 'identifier') # finds all parameters of the function
+                    if parameters.__len__() > 0:
+                        self.parameter_stack.extend(parameters) # pushes them onto the stack as they need to be create inside inner scope
+
+            case "block":
+                for param in self.parameter_stack: # Parameters of a function
+                    kind = "parameter"
+                    name = param.text.decode("utf-8") if isinstance(param.text, bytes) else param.text
+                    self.__add_symbol(name, param, kind)
+
+            case "module":
+                #find module
+                if ASTUtils.get_text(ASTUtils.first_node_of_type(node, "identifier")) == "module":
+                    #find the name of the module
+                    module_name = ASTUtils.get_text(ASTUtils.first_node_of_type(node, "string_content"))
+                    kind = "module"
+                    self.__add_symbol(module_name, node, kind)
+
+                pass
+            case "chunk":
+                pass
         
-        return True
-    
-    def walk(self, node):
+        return False
+
+
+    def build(self, node):
         """
         Recursively walk the AST and create symbols
         """
@@ -93,7 +149,7 @@ class SymbolBuilder:
 
         # walk
         for child in node.children:
-            self.walk(child)
+            self.build(child)
 
         # pops scope stack
         if ASTUtils.is_different_scope_node(node):

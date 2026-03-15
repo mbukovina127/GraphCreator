@@ -11,13 +11,14 @@ class SymbolID:
     kind: Literal[
         "file", # chunk
         "module",
+        "representation", #module representation
         "function",
         "local_function",
         "global_function",
         "local_var",
         "global_var",
         "parameter"
-    ] # declerations
+    ]
     ast_id: str
     start_byte: Optional[int] = None
     end_byte: Optional[int] = None
@@ -54,7 +55,10 @@ class SymbolTable:
     
     def add_unresolved(self, symbol: SymbolID):
         self.unresolved[symbol.name] = symbol
-    
+
+    def get_unresolved_edges(self) -> List[SymbolID]:
+        return list(self.unresolved.values())
+
     def clear_all(self):
         self.scopes.clear()
         self.exports.clear()
@@ -87,7 +91,7 @@ class SymbolTable:
         out = []
 
         while scope is not None:
-            for name, sym in scope.symbols.values():
+            for sym in scope.symbols.values():
                 if sym.kind == target:
                     out.append(sym)
             if len(out) > 0:
@@ -120,7 +124,10 @@ class ScopeStack:
         self.lst.scopes[new.scope_id] = new #FIXME 
         
         return new
-    
+
+    def view_scope(self):
+        return self.__current_scope()
+
     def pop_scope(self):
         return self.stack.pop()
 

@@ -33,4 +33,4 @@ respx>=0.21.0
 aioresponses>=0.7.6
 
 # Scaling
-ray=>2.53.0
+ray>=2.53.0
