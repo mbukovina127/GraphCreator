@@ -15,8 +15,8 @@ class SymbolID:
         "function",
         "local_function",
         "global_function",
-        "local_var",
-        "global_var",
+        "local_variable",
+        "global_variable",
         "parameter"
     ]
     ast_id: str
@@ -71,6 +71,7 @@ class SymbolTable:
         
         @return: symbol if found else None
         """
+        #FIXME it can return multiple symbols with different kinds
         scope = self.scopes.get(scope_id)
 
         while scope is not None:

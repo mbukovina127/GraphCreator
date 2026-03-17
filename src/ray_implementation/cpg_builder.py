@@ -1,5 +1,7 @@
 from typing import Any, Dict, List
 
+from coverage.sysmon import sys_monitoring
+
 from .context_stack import ContextStack
 from .ast_utils import ASTUtils
 from .local_output_builder import LocalOuputBuilder
@@ -43,7 +45,18 @@ class CPGBuilder:
     def _pop_scope(self):
         return self._lexical_scope_stack.pop()
 
-    def __create_knowledge_node_custom(self, node, type: str | None = None, text: str | None = None, file_path: str | None = None, properties: Dict = ""):
+    def __insert_knowledge_node(self, ast_node, k_node):
+        try:
+            self.knowledge_nodes.insert(k_node)
+            self._astId_nodeId_map[str(ast_node.id)] = k_node["_key"]
+        except Exception as e:
+            return {}
+             # TODO: logging
+
+    def __create_knowledge_node_custom(self, node, type: str | None = None, text: str | None = None, file_path: str | None = None, properties: Dict | None = None) -> Dict[str, Any]:
+        """Creates a custom knowledge node, but defaults to node properties.
+            you need to use `self.__insert_knowledge_node()}` to add it to the graph collection
+        """
         node_id = f"node:{node.type if type is None else type}:{self.gen_id()}"
         a_node = {
             "_key": node_id,
@@ -53,19 +66,18 @@ class CPGBuilder:
             "start_byte": node.start_byte,
             "end_byte": node.end_byte,
             "file_path": file_path,
-            "properties": properties
+            "properties": {} if properties is None else properties,
         }
-        try:
-            self.knowledge_nodes.insert(a_node)
-            self._astId_nodeId_map[str(node.id)] = node_id
-        except Exception as e:
-            return {}
-             # TODO: logging
         return a_node
 
-    def _create_knowledge_node(self, node, file_path: str, add_properties: Dict = "") -> Dict[str, Any]:
-        """Legacy wrapper"""
-        return self.__create_knowledge_node_custom(node, file_path, properties=add_properties)
+    def _create_knowledge_node(self, node, file_path: str, add_properties: Dict | None = None) -> Dict[str, Any]:
+        k_node = self.__create_knowledge_node_custom(node=node, file_path=file_path, properties=add_properties)
+        try:
+            self.__insert_knowledge_node(node, k_node)
+        except Exception as e:
+            return {}
+        return k_node
+
 
     def _create_knowledge_edge(self, from_node_id: str, to_node_id: str, edge_type: str) -> Dict[str, Any]:
         edge_id = f"knowledge_edge:{self.gen_id('edge')}"
@@ -118,14 +130,14 @@ class CPGBuilder:
                     self._create_knowledge_edge(k_node["_key"], relevant_id, "initializes")
 
                 case Context.EXPRESSION:
-                    self._create_knowledge_edge(relevant_id, k_node["_key"], "inside_of")
+                    self._create_knowledge_edge(k_node["_key"], relevant_id, "inside_of")
 
                 case Context.ASSIGNMENT:
                     self._create_knowledge_edge(k_node["_key"], relevant_id, "assigns_to")
 
                 case Context.RETURN:
                     ids = self._context_stack.get_context()[1]  # getting the node of function declaration
-                    ids = ids.split("$")  # FIXME: FIX THIS
+                    ids = ids.split("$")  # FIXME: FIX THIS. Try looking into the local symbol table
                     self._create_knowledge_edge(ids[0], k_node["_key"], "returns")  # function returns
                     self._create_knowledge_edge(ids[1], k_node["_key"], "contains")  # return_statement contains
 
@@ -265,68 +277,100 @@ class CPGBuilder:
         # ===========================
         # Helper functions
         #
-        def _apply_environment_edge(k_node: dict[str, Any] | None, local: bool):
+        def _apply_environment_edge(k_node: dict[str, Any] | None):
 
             # There are four options either we are in a global environment or in a modul environment
             #
             edge_type = {
-                "function_declaration": "defines",
-                "variable_declaration": "declares",
+                "local_function_definition": ("defines", True),
+                "global_function_definition": ("defines", False),
+                "local_variable_declaration": ("declares", True),
+                "global_variable_declaration": ("declares", False),
             }.get(k_node["type"])
             if edge_type is None:
                 return
 
-            if  local:
+            if edge_type[1]:
                 # assign to lexical scope
                 id = self._astId_nodeId_map[str(self._lexical_scope_stack[-1])] # get the file/block
 
-                self._create_knowledge_edge(id, k_node["_key"], edge_type)
+                self._create_knowledge_edge(id, k_node["_key"], edge_type[0])
             else:
                 # assign to environment
                 if self._environment == "_G":
-                    self._create_knowledge_edge("_G", k_node["_key"], edge_type)
+                    self._create_knowledge_edge("_G", k_node["_key"], edge_type[0])
                     pass
                 else:
                     # assigning to a module
                     id = self._environment
-                    self._create_knowledge_edge(id, k_node["_key"], edge_type)
+                    self._create_knowledge_edge(id, k_node["_key"], edge_type[0])
             return
         # =============================
 
         if not ASTUtils.is_knowledge_node(node):
             return False
 
-        ASTUtils.is_declaration_node(node) #TODO redo this function to support
-        k_type = node.type
-        additional_properties = ""
+        k_type = ASTUtils.is_declaration_node(node) #TODO redo this function to support
+        k_properties = {}
 
         # k_node = self._create_knowledge_node(node, file_path) #FIXME: move the node creation and database insertion to the bottom of the process because of dynamic properties
 
-        #is the variable initialized property
-        if k_type == "variable_declaration":
-            assignment = ASTUtils.first_node_of_type(node, "assignment_statement")
-            if assignment is not None:
-                k_node["properties"] = {
-                    "initialized": "True"
-                }
-                self._update_knowledge_node(k_node)
+        if k_type == "variable_declaration" or k_type == "possible_variable":
+            # LOCAL SYMBOL TABLE PART
+            try:
+                var = ASTUtils.first_node_of_type(node, "variable_list")
+                identifiers = ASTUtils.nodes_of_type(var, "identifier")
+            except Exception as e:
+                return False #TODO
 
-            # applying lexical and environment edges
-            is_local = ASTUtils.first_node_of_type(node, "local", 1) is not None
-            _apply_environment_edge(k_node, is_local)
 
-            self._context_stack.push_context(k_node["_key"], Context.VAR_DECL)
-            for c in node.children:
-                self.build_cpg(c, file_path)
-            self._context_stack.pop_context()
-            return True
+            for ident in identifiers:
+                name = ASTUtils.get_text(ident)
+                symbol = self._lst.scope_lookup_by_name(self._lexical_scope_stack[-1], name)
+                if symbol is None:
+                    continue
+                if symbol.kind not in ["local_variable", "global_variable"] or symbol.ast_id != node.id:
+                    continue
+
+                # KNOWLEDGE NODE PART
+                k_type = symbol.kind + "_declaration"
+                k_properties["identifier"] = name
+
+                if k_type == "local_variable_declaration":
+                    assignment = ASTUtils.first_node_of_type(node, "assignment_statement")
+                    if assignment is not None:
+                        k_properties["initialized"] = "True"
+
+                k_node = self.__create_knowledge_node_custom(node, k_type, file_path=file_path, properties=k_properties)
+                self.__insert_knowledge_node(node, k_node)
+
+                # applying lexical and environment edges
+                _apply_environment_edge(k_node)
+
+                self._context_stack.push_context(k_node["_key"], Context.VAR_DECL)
+                for c in node.children:
+                    self.build_cpg(c, file_path)
+                self._context_stack.pop_context()
+                return True
 
         if k_type == "function_declaration":
-            #TODO add properties {local, end...}
+
+            try:
+                name = ASTUtils.get_text(ASTUtils.first_node_of_type(node, "identifier"))
+                symbol = self._lst.scope_lookup_by_name(self._lexical_scope_stack[-1], name)
+                if symbol is None:
+                    return False
+            except Exception as e:
+                return False
+
+            k_type = symbol.kind + "_definition"
+
+            k_node = self.__create_knowledge_node_custom(node, k_type, file_path)
+            self.__insert_knowledge_node(node, k_node)
+
 
             # applying lexical and environment edges
-            is_local = ASTUtils.first_node_of_type(node, "local",1) is not None
-            _apply_environment_edge(k_node, is_local)
+            _apply_environment_edge(k_node)
 
             # asssinging paramters
             parameters = ASTUtils.first_node_of_type(node, "parameters")
@@ -356,6 +400,8 @@ class CPGBuilder:
         #     return True
 
         if k_type == "chunk":
+            k_node = self._create_knowledge_node(node, file_path)
+
             self._context_stack.push_context(k_node["_key"], Context.CHUNK)
             for c in node.children:
                 self.build_cpg(c, file_path)

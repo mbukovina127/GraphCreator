@@ -1,3 +1,5 @@
+import unittest
+
 import pytest
 import tempfile
 import sys
@@ -257,34 +259,39 @@ function apply (grammar, rules, captures)
 	return rules
 end
 """
-# with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-#     f.write(SAMPLE_LUA_VAR_SIMPLE)
-#     f.flush()
-#
-#     ast = ASTManager().parse(f.name)
-#
-#     localBuilder = LocalOuputBuilder()
-#     lst = SymbolTable("1")
-#
-#
-#     symbolmanager = SymbolBuilder(local_builder=localBuilder, lst=lst, file_path=f.name)
-#
-#     symbolmanager.build(ast.root_node)
-#     file_name = os.path.basename(f.name)
-#     knowledge_graph_creator = CPGBuilder(localBuilder, lst)
-#
-#     knowledge_graph_creator.build_cpg(ast.root_node, file_name)
-#
-#     nodes = localBuilder.knowledge_nodes.values()
-#     edges = localBuilder.knowledge_edges
-#     bloatedmess.export_to_gephi_csv(nodes, edges)
-#
-#     print(lst.exports.__len__())
-#
+with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
+    f.write(SAMPLE_LUA_BASIC)
+    f.flush()
+
+    ast = ASTManager().parse(f.name)
+
+    localBuilder = LocalOuputBuilder()
+    lst = SymbolTable("1")
+
+
+    symbolmanager = SymbolBuilder(local_builder=localBuilder, lst=lst, file_path=f.name)
+
+    symbolmanager.build(ast.root_node)
+    file_name = os.path.basename(f.name)
+    knowledge_graph_creator = CPGBuilder(localBuilder, lst)
+
+    knowledge_graph_creator.build_cpg(ast.root_node, file_name)
+
+    nodes = localBuilder.knowledge_nodes.values()
+    edges = localBuilder.knowledge_edges
+    bloatedmess.export_to_gephi_csv(nodes, edges)
+
+    print(lst.exports.__len__())
+
 
 
 class TestSymbolCreation:
-    @pytest.mark.parametrize('test_file,exp_local,exp_global', [("""local a = 5\na = 1""",1,0), ("""local a\na = 1""",1,0), ("""a = 1""",0,1), ("""a = 1\na = 2""",0,1)])
+    @pytest.mark.parametrize('test_file,exp_local,exp_global', [
+        ("""local a = 5\na = 1""",1,0),
+        ("""local a\na = 1""",1,0),
+        ("""a = 1""",0,1),
+        ("""a = 1\na = 2""",0,1)
+    ])
     def test_simple_variable_declaration(self, test_file, exp_local, exp_global):
         with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
             f.write(test_file)
@@ -301,7 +308,10 @@ class TestSymbolCreation:
             assert len(lst.scope_lookup_by_kind(ast.root_node.id, "local_var")) == exp_local
             assert len(lst.scope_lookup_by_kind(ast.root_node.id, "global_var")) == exp_global
 
-    @pytest.mark.parametrize("test_file,exp_local,exp_global", [("""local function add(a,b)\n\treturn a + b\nend""",1,0), ("""function add(a,b)\n\treturn a + b\nend""",0,1)])
+    @pytest.mark.parametrize("test_file,exp_local,exp_global", [
+        ("""local function add(a,b)\n\treturn a + b\nend""",1,0),
+        ("""function add(a,b)\n\treturn a + b\nend""",0,1)
+    ])
     def test_simple_function_definition(self, test_file,exp_local,exp_global):
         with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
             f.write(test_file)
@@ -342,7 +352,12 @@ class TestSymbolCreation:
 
 class TestCPGBuilder:
 
-    @pytest.mark.parametrize('test_file,exp_local,exp_global', simple_variable_parameters = [("""local a = 5\na = 1""",1,0), ("""local a\na = 1""",1,0), ("""a = 1""",0,1), ("""a = 1\na = 2""",0,1)])
+    @pytest.mark.parametrize("test_file,exp_local,exp_global", [
+        ("""local a = 5\na = 1""",1,0), # file
+        ("""local a\na = 1""",1,0),
+        ("""a = 1""",0,1),
+        ("""a = 1\na = 2""",0,1)
+    ])
     def test_simple_variable(self, test_file, exp_local, exp_global):
         with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
             f.write(test_file)
@@ -358,6 +373,7 @@ class TestCPGBuilder:
             symbolmanager.build(ast.root_node)
 
             cpg_builder.build_cpg(ast.root_node, f.name)
+
 
             assert builder.knowledge_nodes.__len__() == 4 # chunk and variable declaration + 2 identifiers
             assert builder.knowledge_edges.__len__() == 3 # chunk contains variable, variable declared, variable assigned
@@ -385,9 +401,42 @@ class TestCPGBuilder:
             print()
 
 
-    def test_simple_function(self):
+    @pytest.mark.parametrize("test_file", [
+        (
+            """
+            local function add(x,y)
+                return x + y
+            end
+            """
+        ),
+        (
+            """
+            function add(x,y)
+                return x + y
+            end
+            """
+        ),
+        (
+            """
+            function add(x,y)
+                local a = x
+                b = x + y
+                return b
+            end
+            """
+        ),
+        (
+            """
+            function add(x,y)
+                print("adding numbers")
+                return x + y
+            end
+            """
+        )
+    ])
+    def test_simple_function(self, test_file):
         with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-            f.write(SAMPLE_LUA_FUN_VERY_SIMPLE)
+            f.write(test_file)
             f.flush()
             parser = ASTManager()
             builder = LocalOuputBuilder()
@@ -401,5 +450,5 @@ class TestCPGBuilder:
 
             cpg_builder.build_cpg(ast.root_node, f.name)
 
-            print(builder.knowledge_nodes.__len__())
-            print(builder.knowledge_edges.__len__())
+            print()
+            print(f"knowledge_nodes:{builder.knowledge_nodes.__len__()} and knowledge_edges:{builder.knowledge_edges.__len__()}")
