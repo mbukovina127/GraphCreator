@@ -97,7 +97,7 @@ class ASTUtils:
         return node.type in [
             "function_declaration",
             "variable_declaration",
-            "asssign"
+            "assignment_statement",
             "block",
             "chunk",
         ]
@@ -109,10 +109,10 @@ class ASTUtils:
         """
         map = {
             "function_declaration": 'function_declaration',
-            "variable_declaration": 'variable',
+            "variable_declaration": 'variable_declaration',
             "assignment_statement": 'possible_variable',
             "block": 'block',
-            "chunk": 'file',
+            "chunk": 'chunk',
             "function_call": 'module' # case for module definitions
         }
         

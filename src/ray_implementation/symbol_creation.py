@@ -37,7 +37,7 @@ class SymbolBuilder:
         Create a declaration symbol in the current scope
         """
 
-        def helper_variable_declarations(kind: str | Literal["global_var", "local_var"], symbol_node):
+        def helper_variable_declarations(kind: str | Literal["global_variable", "local_variable"], symbol_node):
             var_list = ASTUtils.first_node_of_type(symbol_node, "variable_list")
             identifiers = ASTUtils.nodes_of_type(var_list, "identifier")  # list in case of multiple declaration
             # find require calls
@@ -45,10 +45,10 @@ class SymbolBuilder:
             exp_list = ASTUtils.first_node_of_type(symbol_node,"expression_list")  # TODO: check if expression list is correct type
             list = []  # list of module names
             if exp_list is not None:
-                asssignments = [x for x in exp_list.children if x.type in ["identifier", "function_call"]]
+                assignments = [x for x in exp_list.children if x.type in ["identifier", "function_call"]]
 
-                if len(identifiers) == len(asssignments):
-                    for a in asssignments:
+                if len(identifiers) == len(assignments):
+                    for a in assignments:
                         if a is None:
                             continue
                         ident = ASTUtils.get_text(ASTUtils.first_node_of_type(a, "identifier"))
@@ -63,7 +63,7 @@ class SymbolBuilder:
             for i, ident in enumerate(identifiers):
                 name = ASTUtils.get_text(ident)
                 if list.__len__() > 0 and list[i].__len__() > 0:
-                    kind = "local_module_representation" if kind == "local_var" else "module_representation"
+                    kind = "local_module_representation" if kind == "local_variable" else "module_representation"
                     self.__add_symbol(name, symbol_node, kind)
                     module_name = list[i]
                     self._lst.add_import(name, module_name)
@@ -74,22 +74,22 @@ class SymbolBuilder:
             # TODO: expression handling
 
         match type:
-            case "variable": # going from variable declaration is always local
-                kind = "local_var" if node.children[0].type == "local" else "global_var"  # Redundant, is always local
+            case "variable_declaration": # going from variable declaration is always local
+                kind = "local_variable" if node.children[0].type == "local" else "global_variable"  # Redundant, is always local
 
                 helper_variable_declarations(kind, node)
 
             case "possible_variable": #going from assignment
                 if ASTUtils.parent_node_of_type(node, "variable_declaration", 1) is not None:
-                    return False # this is inside variable declaration
+                    return False # this is inside of variable declaration
 
-                kind = "local_var" if node.parent.children[0].type == "local" else "global_var" # TEST
+                kind = "local_variable" if node.parent.children[0].type == "local" else "global_variable" # TEST
 
                 var_list = ASTUtils.first_node_of_type(node, "variable_list")
                 identifiers = ASTUtils.nodes_of_type(var_list, "identifier")
 
                 # more checks in case it is really a global variable and not just an assignment
-                if kind == "global_var":
+                if kind == "global_variable":
                     #first look into the lst
                     for i in identifiers:
                         ident = ASTUtils.get_text(i)
