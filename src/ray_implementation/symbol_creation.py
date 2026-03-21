@@ -112,10 +112,9 @@ class SymbolBuilder:
                         self.parameter_stack.extend(parameters) # pushes them onto the stack as they need to be create inside inner scope
 
             case "block":
-                for param in self.parameter_stack: # Parameters of a function
-                    kind = "parameter"
-                    name = param.text.decode("utf-8") if isinstance(param.text, bytes) else param.text
-                    self.__add_symbol(name, param, kind)
+                while self.parameter_stack.__len__() > 0:
+                    param = self.parameter_stack.pop()
+                    self.__add_symbol(ASTUtils.get_text(param), param, "parameter")
 
             case "module":
                 #find module

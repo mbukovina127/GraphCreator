@@ -23,6 +23,7 @@ from contextlib import asynccontextmanager
 import aiofiles
 import httpx
 import jsonschema
+import ray
 import zstandard as zstd
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -33,7 +34,7 @@ from file_system_analyzer.project_structure_analyzer import analyze_project_stru
 from graph_builder.output_builder import GraphOutputBuilder
 from graph_builder.ast_inserter import ASTInserter
 from graph_builder.graph_queries import GraphQueries
-
+from ray_implementation.ray_orchestrator import RayOrchestrator
 
 # ============================================================================
 # Configuration
@@ -259,7 +260,20 @@ class LuaCodeAnalyzerService:
             lua_files = [item for item in project_items if item["type"] == "file"]
             
             logger.info(f"Found {len(lua_files)} Lua files to analyze")
-            
+
+            # run CPG builder with ray and collect the exported graphs
+            orchestrator = RayOrchestrator()
+            orchestrator.create_workers(number_of_workers=2) # 2 for now
+            futures = orchestrator.distribute_work(lua_files)
+            results = ray.get(futures)
+
+            # we get a list of files we then run the graph collector with root directory and a lua files and then we check whether the directory has the file
+
+            # we merge the local graphs into the bigger ones and we keep the imports, exports and unresolved edges,
+
+            # we then run the resolver for unresolved edges
+
+
             # Initialize graph builder
             graph_builder = GraphOutputBuilder()
             ast_inserter = ASTInserter(graph_builder)

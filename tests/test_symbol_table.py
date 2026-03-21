@@ -1,10 +1,9 @@
-import unittest
-
 import pytest
 import tempfile
 import sys
 import os
 
+from code_analyzer.parse_code import ParallelASTManager
 from src.ray_implementation import bloatedmess
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -58,7 +57,22 @@ local function add(a,b)
 local return_value = add(1,2)
 print(add(x,y))
 """
+SAMPLE_LUA_MODULE = """
+module 'leg.parsing'
+            
+--this should not be in module
+local function add(x,y)
+    return x + y
+end
 
+--this should be in module
+function parse(file)
+    local output
+    tree-sitting(file, output)
+    return output 
+end
+
+"""
 SAMPLE_LUA_COMPLEX = """
 local assert  = assert
 local pairs   = pairs
@@ -260,7 +274,7 @@ function apply (grammar, rules, captures)
 end
 """
 with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-    f.write(SAMPLE_LUA_BASIC)
+    f.write(SAMPLE_LUA_MODULE)
     f.flush()
 
     ast = ASTManager().parse(f.name)
@@ -275,7 +289,7 @@ with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
     file_name = os.path.basename(f.name)
     knowledge_graph_creator = CPGBuilder(localBuilder, lst)
 
-    knowledge_graph_creator.build_cpg(ast.root_node, file_name)
+    knowledge_graph_creator.build(ast.root_node, file_name)
 
     nodes = localBuilder.knowledge_nodes.values()
     edges = localBuilder.knowledge_edges
@@ -283,9 +297,33 @@ with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
 
     print(lst.exports.__len__())
 
+def create_temp_lua(lua_code: str) -> str:
+    f = tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False)
+    f.write(lua_code)
+    f.flush()
+    f.close()
+    return f.name
+
+def build_context(lua_code: str):
+    file_name = create_temp_lua(lua_code)
+    parser = ParallelASTManager("1")
+    builder = LocalOuputBuilder()
+    lst = SymbolTable("1")
+
+    ast = parser.parse(file_name)
+
+    sym_builder = SymbolBuilder(
+        local_builder=builder,
+        lst=lst,
+        file_path=file_name
+    )
+    cpg_builder = CPGBuilder(builder, lst)
+
+    return file_name, ast, lst, sym_builder, cpg_builder
 
 
 class TestSymbolCreation:
+
     @pytest.mark.parametrize('test_file,exp_local,exp_global', [
         ("""local a = 5\na = 1""",1,0),
         ("""local a\na = 1""",1,0),
@@ -293,62 +331,36 @@ class TestSymbolCreation:
         ("""a = 1\na = 2""",0,1)
     ])
     def test_simple_variable_declaration(self, test_file, exp_local, exp_global):
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-            f.write(test_file)
-            f.flush()
-            parser = ASTManager()
-            builder = LocalOuputBuilder()
-            lst = SymbolTable("1")
-            ast = parser.parse(f.name)
+        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
+        symbol_builder.build(ast.root_node)
 
-            symbolmanager = SymbolBuilder(local_builder=builder, lst=lst, file_path=f.name)
-
-            symbolmanager.build(ast.root_node)
-
-            assert len(lst.scope_lookup_by_kind(ast.root_node.id, "local_var")) == exp_local
-            assert len(lst.scope_lookup_by_kind(ast.root_node.id, "global_var")) == exp_global
+        assert len(lst.scope_lookup_by_kind(ast.root_node.id, "local_variable")) == exp_local
+        assert len(lst.scope_lookup_by_kind(ast.root_node.id, "global_variable")) == exp_global
 
     @pytest.mark.parametrize("test_file,exp_local,exp_global", [
         ("""local function add(a,b)\n\treturn a + b\nend""",1,0),
         ("""function add(a,b)\n\treturn a + b\nend""",0,1)
     ])
     def test_simple_function_definition(self, test_file,exp_local,exp_global):
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-            f.write(test_file)
-            f.flush()
-            parser = ASTManager()
-            builder = LocalOuputBuilder()
-            lst = SymbolTable("1")
-            ast = parser.parse(f.name)
+        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
+        symbol_builder.build(ast.root_node)
 
-            symbolmanager = SymbolBuilder(local_builder=builder, lst=lst, file_path=f.name)
+        assert lst.exports.__len__() == 3  # 3 symbols
+        assert lst.scopes.__len__() == 2
+        assert len(lst.scope_lookup_by_kind(ast.root_node.id, "local_function")) == exp_local
+        assert len(lst.scope_lookup_by_kind(ast.root_node.id, "global_function")) == exp_global
 
-            symbolmanager.build(ast.root_node)
-
-            assert lst.exports.__len__() == 3  # 3 symbols
-            assert lst.scopes.__len__() == 2
-            assert len(lst.scope_lookup_by_kind(ast.root_node.id, "local_function")) == exp_local
-            assert len(lst.scope_lookup_by_kind(ast.root_node.id, "global_function")) == exp_global
-
-
-    def test_require_modules(self):
-        _test_file = """
+    @pytest.mark.parametrize("test_file", [
+        """
         local a, b = require "module", require "second_module"
         """
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-            f.write(_test_file)
-            f.flush()
-            parser = ASTManager()
-            builder = LocalOuputBuilder()
-            lst = SymbolTable("1")
-            ast = parser.parse(f.name)
+    ])
+    def test_require_modules(self, test_file):
+        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
+        symbol_builder.build(ast.root_node)
 
-            symbolmanager = SymbolBuilder(local_builder=builder, lst=lst, file_path=f.name)
-
-            symbolmanager.build(ast.root_node)
-
-            assert lst.imports["a"] == 'module'
-            assert lst.imports["b"] == 'second_module'
+        assert lst.imports["a"] == 'module'
+        assert lst.imports["b"] == 'second_module'
 
 class TestCPGBuilder:
 
@@ -358,48 +370,25 @@ class TestCPGBuilder:
         ("""a = 1""",0,1),
         ("""a = 1\na = 2""",0,1)
     ])
+
     def test_simple_variable(self, test_file, exp_local, exp_global):
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-            f.write(test_file)
-            f.flush()
-            parser = ASTManager()
-            builder = LocalOuputBuilder()
-            lst = SymbolTable("1")
-            ast = parser.parse(f.name)
-            cpg_builder = CPGBuilder(builder, lst)
+        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
+        symbol_builder.build(ast.root_node)
+        cpg_builder.build(ast.root_node, file_name)
 
-            symbolmanager = SymbolBuilder(local_builder=builder, lst=lst, file_path=f.name)
-
-            symbolmanager.build(ast.root_node)
-
-            cpg_builder.build_cpg(ast.root_node, f.name)
-
-
-            assert builder.knowledge_nodes.__len__() == 4 # chunk and variable declaration + 2 identifiers
-            assert builder.knowledge_edges.__len__() == 3 # chunk contains variable, variable declared, variable assigned
+        assert cpg_builder.local_builder.get_nodes_by_type("knowledge_nodes", "local_variable_declaration").__len__() == exp_local # chunk and variable declaration + 2 identifiers
+        assert cpg_builder.local_builder.get_nodes_by_type("knowledge_nodes", "global_variable_declaration").__len__() == exp_global # chunk contains variable, variable declared, variable assigned
 
     def test_less_simple_variable(self):
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-            f.write(SAMPLE_LUA_VAR_SIMPLE)
-            f.flush()
-            parser = ASTManager()
-            builder = LocalOuputBuilder()
-            lst = SymbolTable("1")
-            ast = parser.parse(f.name)
-            cpg_builder = CPGBuilder(builder, lst)
+        file_name, ast, lst, symbol_builder, cpg_builder = build_context(SAMPLE_LUA_VAR_SIMPLE)
+        symbol_builder.build(ast.root_node)
+        cpg_builder.build(ast.root_node, file_name)
 
-            symbolmanager = SymbolBuilder(local_builder=builder, lst=lst, file_path=f.name)
+        nodes = cpg_builder.local_builder.knowledge_nodes.values()
+        edges = cpg_builder.local_builder.knowledge_edges
+        bloatedmess.export_to_gephi_csv(nodes, edges)
 
-            symbolmanager.build(ast.root_node)
-
-            cpg_builder.build_cpg(ast.root_node, f.name)
-
-            nodes = localBuilder.knowledge_nodes.values()
-            edges = localBuilder.knowledge_edges
-            bloatedmess.export_to_gephi_csv(nodes, edges)
-
-            print()
-
+        print()
 
     @pytest.mark.parametrize("test_file", [
         (
@@ -435,20 +424,34 @@ class TestCPGBuilder:
         )
     ])
     def test_simple_function(self, test_file):
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-            f.write(test_file)
-            f.flush()
-            parser = ASTManager()
-            builder = LocalOuputBuilder()
-            lst = SymbolTable("1")
-            ast = parser.parse(f.name)
-            cpg_builder = CPGBuilder(builder, lst)
+        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
+        symbol_builder.build(ast.root_node)
+        cpg_builder.build(ast.root_node, file_name)
 
-            symbolmanager = SymbolBuilder(local_builder=builder, lst=lst, file_path=f.name)
+        print()
+        print(f"knowledge_nodes:{cpg_builder.local_builder.knowledge_nodes.__len__()} and knowledge_edges:{cpg_builder.local_builder.knowledge_edges.__len__()}")
 
-            symbolmanager.build(ast.root_node)
-
-            cpg_builder.build_cpg(ast.root_node, f.name)
-
-            print()
-            print(f"knowledge_nodes:{builder.knowledge_nodes.__len__()} and knowledge_edges:{builder.knowledge_edges.__len__()}")
+    @pytest.mark.dependency(depends=["test_simple_variable" "test_simple_function"])
+    @pytest.mark.parametrize("test_file", [
+        (
+            """
+            module 'leg.parsing'
+            
+            --this should not be in module
+            local function add(x,y)
+                return x + y
+            end
+            
+            --this should be in module
+            function parse(file)
+                local output
+                tree-sitting(file, output)
+                return output 
+            end
+            """
+        )
+    ])
+    def test_modules(self, test_file):
+        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
+        symbol_builder.build(ast.root_node)
+        cpg_builder.build(ast.root_node, file_name)
