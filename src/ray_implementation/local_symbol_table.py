@@ -24,6 +24,14 @@ class SymbolID:
     end_byte: Optional[int] = None
 
 @dataclass
+class Unresolved:
+    worker_id: str
+    id: str
+    file_path: str
+    scope_id: str
+    name: str
+
+@dataclass
 class Scope:
     scope_id: str
     parent: Optional[str]
@@ -41,7 +49,7 @@ class SymbolTable:
         """symbols"""
         self.imports: Dict[str, str] = {}
         """mappinng of importeted modules to variables i.e. local m = require("math.utils") `m <- math.utils`"""
-        self.unresolved: Dict[str, SymbolID] = {}
+        self.unresolved: Dict[str, Unresolved] = {}
         """unresolved symbols without an edge. Mostly references to other files or errors"""
 
     def add_scope(self, scope: Scope):
@@ -56,7 +64,11 @@ class SymbolTable:
     def add_unresolved(self, symbol: SymbolID):
         self.unresolved[symbol.name] = symbol
 
-    def get_unresolved_edges(self) -> List[SymbolID]:
+    def get_exports(self) -> Dict[str, SymbolID]:
+        return self.exports
+    def get_imports(self) -> Dict[str, str]:
+        return self.imports
+    def get_unresolved_edges(self) -> List[Unresolved]:
         return list(self.unresolved.values())
 
     def clear_all(self):
@@ -99,6 +111,17 @@ class SymbolTable:
                 return out
             scope = self.scopes[scope.parent] if scope.parent is not None else None
         return out
+
+    def scope_lookup_by_astId(self, scope_id, target:str) -> Optional[SymbolID]:
+        scope = self.scopes.get(scope_id)
+
+        while scope is not None:
+            for sym in scope.symbols.values():
+                if sym.ast_id == target:
+                    return sym
+
+            scope = self.scopes[scope.parent] if scope.parent is not None else None
+        return None
 
 
 #TODO maybe seperate lst logic from this

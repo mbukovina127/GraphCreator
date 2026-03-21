@@ -4,12 +4,16 @@ import tempfile
 import sys
 import os
 
+import ray
+
+from ray_implementation.ray_orchestrator import RayOrchestrator
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-# from ray_implementation.local_graph_queries import LocalGraphQueries
-# from ray_implementation.local_output_builder import LocalOuputBuilder
-# from ray_implementation.local_symbol_table import LocalSymbolTable
-# from ray_implementation.parallel_ast_inserter import ParallelASTInserter
+
+from code_analyzer.parse_code import ParallelASTManager
+from ray_implementation import GraphManager, SymbolTable, CGPWorker
+
 from code_analyzer import ASTManager
 
 
@@ -110,26 +114,60 @@ print("Done")
 
 
 
-
-with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-    f.write(SAMPLE_LUA_SIMPLE)
+def create_temp_lua(lua_code: str) -> str:
+    f = tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False)
+    f.write(lua_code)
     f.flush()
+    f.close()
+    return f.name
 
-    ast_manager = ASTManager()
-    ast_manager.clear()
+def test_parallel_ast_manager():
+    file_path = create_temp_lua(SAMPLE_LUA_SIMPLE)
+    try:
+        ast_manager = ParallelASTManager(file_path)
+        ast = ast_manager.parse(file_path)
+    finally:
+        os.unlink(file_path)
 
-    ast = ast_manager.parse(f.name)
+def test_graph_manager():
+    file_path = create_temp_lua(SAMPLE_LUA_SIMPLE)
 
-    print(f"Number of code blocks: {ast.root_node.child_count} ")
+    try:
+        lst = SymbolTable("1")
+        ast = ParallelASTManager(file_path).parse(file_path)
 
-    # local_graph_builder = LocalOuputBuilder()
-    # lst = LocalSymbolTable(worker_id="worker_1")
-    # para_ast_inserter = AST(local_graph_builder, lst, "worker_1", file_path=f.name)
+        graph_manager = GraphManager(lst)
 
-    # para_ast_inserter.insert_nodes(ast.root_node, file=f.name)
+        graph_manager.generate_graph(ast, file_path)
 
+        result = graph_manager.get_graphs()
 
-    # local_graph_queries = LocalGraphQueries(local_graph_builder)
-    # local_graph_queries.build_KG()
+        assert result.__len__() > 0
 
-    # local_graph_builder.export_cpg_v1
+    finally:
+        os.unlink(file_path)
+
+def test_cpg_worker():
+    file_path = create_temp_lua(SAMPLE_LUA_SIMPLE)
+
+    ray.init()
+
+    worker = CGPWorker.remote("1")
+
+    future = worker.analyze_file.remote(file_path)
+
+    result = ray.get(future)
+
+    assert result['ast_graph'].__len__() > 0
+    assert result['cpg_graph'].__len__() > 0
+
+def test_orchestrator():
+    file_path = create_temp_lua(SAMPLE_LUA_SIMPLE)
+
+    ray_orchestrator = RayOrchestrator()
+    ray_orchestrator.create_workers(1)
+    futures = ray_orchestrator.distribute_work([file_path])
+    result = ray.get(futures)
+
+    assert result[0]['ast_graph'].__len__() > 0
+    assert result[0]['cpg_graph'].__len__() > 0

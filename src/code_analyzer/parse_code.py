@@ -2,9 +2,7 @@ from typing import ClassVar, Dict, Optional
 from tree_sitter import Language, Parser, Tree
 import tree_sitter_lua as tslua
 
-# ASTManager is a singleton class
-# because we want to have only one instance of the parser and language
-# and we dont want to use them as global variables
+# ASTManager
 class ASTManager:
     _instance: ClassVar[Optional["ASTManager"]] = None
     
@@ -53,6 +51,46 @@ class ASTManager:
             
         return self._ast_dict[file_path]
     
+    def clear(self) -> None:
+        """Clear all stored ASTs - useful for processing new projects"""
+        self._ast_dict.clear()
+        self._project_name = None
+        self._project_path = None
+
+
+class ParallelASTManager:
+    def __init__(self, worker_id) -> None:
+        self.worker_id = worker_id
+        self._language = Language(tslua.language())
+        self._parser = Parser()
+        self._parser.language = self._language
+        self._ast_dict: Dict[str, Tree] = {}
+        self._project_name: Optional[str] = None
+        self._project_path: Optional[str] = None
+
+    # method that creates AST and add it to the _ast_dict with path to the file
+    def parse(self, file_path: str, incremental: bool = False) -> Tree:
+        # read source code
+        with open(file_path, "rb") as f:
+            lua_code = f.read()
+        if incremental and file_path in self._ast_dict:
+            # if the file was already parsed and we want to use Tree-sitters incremental parsing
+            self._ast_dict[file_path] = self._parser.parse(lua_code, self._ast_dict[file_path])
+        else:
+            self._ast_dict[file_path] = self._parser.parse(lua_code)
+
+        return self._ast_dict[file_path]
+
+    # method returns AST of a certain file from _ast_dict
+    def get_ast(self, file_path: str) -> Tree:
+        if not self._ast_dict:
+            raise ValueError("No ASTs have been parsed yet. Call parse() first.")
+
+        if file_path not in self._ast_dict:
+            raise ValueError(f"No AST found for {file_path}. Parse this file first.")
+
+        return self._ast_dict[file_path]
+
     def clear(self) -> None:
         """Clear all stored ASTs - useful for processing new projects"""
         self._ast_dict.clear()
