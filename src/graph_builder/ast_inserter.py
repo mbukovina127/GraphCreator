@@ -130,3 +130,4 @@ class ASTInserter:
         with open(file_path) as f:
             ast_data = json.load(f)
         self.insert_node_from_json(ast_data)
+
