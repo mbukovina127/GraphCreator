@@ -1,21 +1,21 @@
-
-import pytest
 import tempfile
 import sys
 import os
+import zipfile
 
+import pytest
 import ray
 
-from ray_implementation.ray_orchestrator import RayOrchestrator
+from file_system_analyzer import analyze_project_structure
+from ray_implementation.bloatedmess import export_to_gephi_csv
+from ray_implementation.builders.graph_collector import GraphCollector
+from ray_implementation.managers.ray_orchestrator import RayOrchestrator
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 
 from code_analyzer.parse_code import ParallelASTManager
 from ray_implementation import GraphManager, SymbolTable, CGPWorker
-
-from code_analyzer import ASTManager
-
 
 SAMPLE_LUA_SIMPLE = '''
 -- Simple Lua file for testing
@@ -31,6 +31,24 @@ end
 local result = add(x, y)
 print(result)
 '''
+
+
+SAMPLE_LUA = """
+local x = 10
+local y = 20
+print(x + y)
+"""
+
+FUNCTION_LUA = """
+function add(a, b)
+    return a + b
+end
+
+function subtract(a, b)
+    return a - b
+end
+"""
+
 
 SAMPLE_LUA_COMPLEX = """
 -- Comprehensive Lua test file
@@ -161,13 +179,63 @@ def test_cpg_worker():
     assert result['ast_graph'].__len__() > 0
     assert result['cpg_graph'].__len__() > 0
 
-def test_orchestrator():
+@pytest.mark.parametrize('test_code', [SAMPLE_LUA_SIMPLE, SAMPLE_LUA, FUNCTION_LUA])
+def test_orchestrator(test_code):
     file_path = create_temp_lua(SAMPLE_LUA_SIMPLE)
 
     ray_orchestrator = RayOrchestrator()
     ray_orchestrator.create_workers(1)
-    futures = ray_orchestrator.distribute_work([file_path])
+    futures = ray_orchestrator.distribute_work([{"path": file_path}])
     result = ray.get(futures)
+    ray_orchestrator.cleanup()
 
     assert result[0]['ast_graph'].__len__() > 0
-    assert result[0]['cpg_graph'].__len__() > 0
+    assert result[0]['knowledge_graph'].__len__() > 0
+
+@pytest.fixture
+def sample_zip():
+    """Create a sample ZIP file with Lua code"""
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:
+        zip_path = f.name
+
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            zf.writestr("src/main.lua", SAMPLE_LUA)
+            zf.writestr("src/utils.lua", FUNCTION_LUA)
+
+    yield zip_path
+
+    os.unlink(zip_path)
+
+
+def test_graph_collector(sample_zip):
+    #setting up
+    temp_dir = tempfile.mkdtemp(prefix="test_graph_collector")
+
+    extract_dir = os.path.join(temp_dir, "extract_dir")
+    os.makedirs(extract_dir, exist_ok=True)
+
+    with zipfile.ZipFile(sample_zip) as zf:
+        zf.extractall(extract_dir)
+
+    project_structure = analyze_project_structure(extract_dir)
+    files = [x for x in project_structure if x["type"] == "file"]
+
+    assert len(files) == 2
+
+    #ray orchestration
+    orchestrator = RayOrchestrator()
+    orchestrator.create_workers(2)
+    futures = orchestrator.distribute_work(files)
+    results = ray.get(futures)
+
+    assert results[0]['ast_graph'].__len__() > 0
+    assert results[0]['knowledge_graph'].__len__() > 0
+
+    #graph collecting
+    graph_collector = GraphCollector()
+    graph_collector.collect(results, extract_dir)
+
+    nodes = graph_collector._knowledge_nodes
+    edges = graph_collector._knowledge_edges
+    export_to_gephi_csv(nodes.values(), edges)
+

@@ -24,11 +24,12 @@ class RayOrchestrator:
 
         futures = []
 
-        for i, file_path in enumerate(files):
+        for i, files in enumerate(files):
             worker = self.workers[ i % len(self.workers) ]
-            futures.append(worker.analyze_file.remote(file_path))
+            futures.append(worker.analyze_file.remote(files["path"]))
 
         return futures
 
     def cleanup(self):
         self.workers = []
+        ray.shutdown()

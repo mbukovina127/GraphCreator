@@ -1,7 +1,7 @@
 from typing import List, Literal
-from .ast_utils import ASTUtils
-from .local_output_builder import LocalOuputBuilder
-from .local_symbol_table import SymbolTable, ScopeStack
+from ray_implementation.ast_utils import ASTUtils
+from ray_implementation.builders.local_output_builder import LocalOuputBuilder
+from ray_implementation.structures.local_symbol_table import SymbolTable, ScopeStack
 
 
 class SymbolBuilder:

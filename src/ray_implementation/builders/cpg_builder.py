@@ -1,12 +1,10 @@
 from typing import Any, Dict, List
 
-from coverage.sysmon import sys_monitoring
-
-from .context_stack import ContextStack
-from .ast_utils import ASTUtils
-from .local_output_builder import LocalOuputBuilder
-from .local_symbol_table import SymbolTable
-from .util_enums import Context
+from ray_implementation.structures.context_stack import ContextStack
+from ray_implementation.ast_utils import ASTUtils
+from ray_implementation.builders.local_output_builder import LocalOuputBuilder
+from ray_implementation.structures.local_symbol_table import SymbolTable
+from ray_implementation.structures.util_enums import Context
 
 import logging
 
@@ -69,7 +67,7 @@ class CPGBuilder:
         """Creates a custom knowledge node, but defaults to node properties.
             you need to use `self.__insert_knowledge_node()}` to add it to the graph collection
         """
-        node_id = f"node:{node.type if type is None else type}:{self.gen_id()}"
+        node_id = f"{self._lst.worker_id}:node:{node.type if type is None else type}:{self.gen_id()}"
         a_node = {
             "_key": node_id,
             "symbol_id": node.id,
@@ -92,9 +90,9 @@ class CPGBuilder:
 
 
     def _create_knowledge_edge(self, from_node_id: str, to_node_id: str, edge_type: str) -> Dict[str, Any]:
-        edge_id = f"knowledge_edge:{self.gen_id('edge')}"
+        # edge_id = f"knowledge_edge:{self.gen_id('edge')}" FIXME useless get rid of it
         edge = {
-            "_key": edge_id,
+            # "_key": edge_id,
             "_from": from_node_id,
             "_to": to_node_id,
             "relation": edge_type,
@@ -329,6 +327,8 @@ class CPGBuilder:
                 # assign to environment
                 if self._environment == "_G":
                     self._create_knowledge_edge("_G", k_node["_key"], edge_type[0])
+                    # also create an edge to the chunk/file where the function is declared
+                    self._create_knowledge_edge(self._astId_nodeId_map[str(self._lexical_scope_stack[-1])], k_node["_key"], "contains") #TODO don't know the convention
                     pass
                 else:
                     # assigning to a module
@@ -394,7 +394,7 @@ class CPGBuilder:
 
             k_type = symbol.kind + "_definition"
 
-            k_node = self.__create_knowledge_node_custom(node, k_type, file_path)
+            k_node = self.__create_knowledge_node_custom(node, type=k_type, file_path=file_path)
             self.__insert_knowledge_node(node, k_node)
 
 

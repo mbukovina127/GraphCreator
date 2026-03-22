@@ -1,13 +1,10 @@
 #TODO: description
 #TODO: Implement graph Manager
 import ray
-import logging
-from typing import Dict, Any, List, Optional
-
 
 from code_analyzer.parse_code import ParallelASTManager
-from .local_symbol_table import SymbolTable
-from .graph_manager import GraphManager
+from ray_implementation.structures.local_symbol_table import SymbolTable
+from ray_implementation.managers.graph_manager import GraphManager
 
 @ray.remote
 class CGPWorker:
