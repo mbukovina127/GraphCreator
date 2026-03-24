@@ -9,7 +9,7 @@ from src.ray_implementation import bloatedmess
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from code_analyzer import ASTManager
-from ray_implementation import SymbolBuilder, CPGBuilder, LocalOuputBuilder, SymbolTable
+from ray_implementation import SymbolBuilder, CPGBuilder, LocalOutputBuilder, SymbolTable
 
 SAMPLE_LUA_VAR_VERY_SIMPLE = """
 local a = 5
@@ -279,7 +279,7 @@ with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
 
     ast = ASTManager().parse(f.name)
 
-    localBuilder = LocalOuputBuilder()
+    localBuilder = LocalOutputBuilder()
     lst = SymbolTable("1")
 
 
@@ -307,7 +307,7 @@ def create_temp_lua(lua_code: str) -> str:
 def build_context(lua_code: str):
     file_name = create_temp_lua(lua_code)
     parser = ParallelASTManager("1")
-    builder = LocalOuputBuilder()
+    builder = LocalOutputBuilder()
     lst = SymbolTable("1")
 
     ast = parser.parse(file_name)

@@ -9,7 +9,7 @@ from tree_sitter import Tree
 from graph_builder import ASTInserter
 from ray_implementation.builders.symbol_creation import SymbolBuilder
 from ray_implementation.builders.cpg_builder import CPGBuilder
-from ray_implementation.builders.local_output_builder import LocalOuputBuilder
+from ray_implementation.builders.local_output_builder import LocalOutputBuilder
 from ray_implementation.structures.local_symbol_table import SymbolTable
 
 logger = logging.getLogger(__name__)
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class GraphManager:
     
     def __init__(self, lst: SymbolTable):
-        self.local_out_builder = LocalOuputBuilder()
+        self.local_out_builder = LocalOutputBuilder()
         self._local_symbol_table = lst
         self.file = ""
         self._ran = False
@@ -38,7 +38,7 @@ class GraphManager:
 
         # create a knowledge graph
         logger.info(f"[graph_manager][worker_id={self._local_symbol_table.worker_id}] Creating knowledge graph...")
-        self.knowledge_graph_builder = CPGBuilder(self.local_out_builder, self._local_symbol_table)
+        self.knowledge_graph_builder = CPGBuilder(self.local_out_builder, self._local_symbol_table, file_path)
         self.knowledge_graph_builder.build(ast.root_node, file_path)
         logger.info(f"[graph_manager][worker_id={self._local_symbol_table.worker_id}] Knowledge graph built.")
 
@@ -65,3 +65,10 @@ class GraphManager:
             "exports": self._local_symbol_table.get_exports(),
             "imports": self._local_symbol_table.get_imports()
         }
+    def clear(self):
+        self._ran = False
+        self.local_out_builder.clear()
+        logger.info(f"[graph_manager][worker_id={self._local_symbol_table.worker_id}] Cleared stored graphs.")
+        self._local_symbol_table.clear_all()
+        logger.info(f"[graph_manager][worker_id={self._local_symbol_table.worker_id}] Cleared symbol table.")
+        return

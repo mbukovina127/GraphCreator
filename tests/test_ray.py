@@ -49,6 +49,23 @@ function subtract(a, b)
 end
 """
 
+MODULE_LUA = """
+
+function addition(a, b)
+    return a + b
+end
+
+module "math.premium"
+
+function subtract(a, b)
+    result = a - b
+    return result
+end
+
+results = 0
+
+
+"""
 
 SAMPLE_LUA_COMPLEX = """
 -- Comprehensive Lua test file
@@ -146,9 +163,9 @@ def test_parallel_ast_manager():
         ast = ast_manager.parse(file_path)
     finally:
         os.unlink(file_path)
-
-def test_graph_manager():
-    file_path = create_temp_lua(SAMPLE_LUA_SIMPLE)
+@pytest.mark.parametrize('test_code', [SAMPLE_LUA_SIMPLE, SAMPLE_LUA, FUNCTION_LUA])
+def test_graph_manager(test_code):
+    file_path = create_temp_lua(test_code)
 
     try:
         lst = SymbolTable("1")
@@ -179,7 +196,7 @@ def test_cpg_worker():
     assert result['ast_graph'].__len__() > 0
     assert result['cpg_graph'].__len__() > 0
 
-@pytest.mark.parametrize('test_code', [SAMPLE_LUA_SIMPLE, SAMPLE_LUA, FUNCTION_LUA])
+@pytest.mark.parametrize('test_code', [SAMPLE_LUA_SIMPLE, SAMPLE_LUA, FUNCTION_LUA, MODULE_LUA])
 def test_orchestrator(test_code):
     file_path = create_temp_lua(SAMPLE_LUA_SIMPLE)
 
@@ -201,6 +218,7 @@ def sample_zip():
         with zipfile.ZipFile(zip_path, 'w') as zf:
             zf.writestr("src/main.lua", SAMPLE_LUA)
             zf.writestr("src/utils.lua", FUNCTION_LUA)
+            zf.writestr("src/premium/math.lua", MODULE_LUA)
 
     yield zip_path
 
@@ -220,7 +238,7 @@ def test_graph_collector(sample_zip):
     project_structure = analyze_project_structure(extract_dir)
     files = [x for x in project_structure if x["type"] == "file"]
 
-    assert len(files) == 2
+    assert len(files) == 3
 
     #ray orchestration
     orchestrator = RayOrchestrator()

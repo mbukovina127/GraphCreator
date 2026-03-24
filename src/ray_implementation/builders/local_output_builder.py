@@ -17,7 +17,7 @@ from graph_builder.output_builder import CollectionProxy, EdgeCollectionProxy, G
 
 
 
-class LocalOuputBuilder (GraphOutputBuilder):
+class LocalOutputBuilder:
     def __init__(self):
         # Main AST graph collections (equivalent to lua_graph)
         self._nodes: Dict[str, Dict[str, Any]] = {}
@@ -35,14 +35,15 @@ class LocalOuputBuilder (GraphOutputBuilder):
         self._path_to_id: Dict[str, str] = {}
         
         pass
-        def clear(self):
-            """Clear all stored data - useful for processing new projects"""
-            self._nodes.clear()
-            self._edges.clear()
-            self.knowledge_nodes.clear()
-            self.knowledge_edges.clear()
-            self._node_counter = 1
-            self._path_to_id.clear()
+
+    def clear(self):
+        """Clear all stored data - useful for processing new projects"""
+        self._nodes.clear()
+        self._edges.clear()
+        self.knowledge_nodes.clear()
+        self.knowledge_edges.clear()
+        self._node_counter = 1
+        self._path_to_id.clear()
 
     # =========================================================================
     # Node collection access (mimics ArangoHandler.get_collection)

@@ -1,11 +1,11 @@
 from typing import List, Literal
 from ray_implementation.ast_utils import ASTUtils
-from ray_implementation.builders.local_output_builder import LocalOuputBuilder
+from ray_implementation.builders.local_output_builder import LocalOutputBuilder
 from ray_implementation.structures.local_symbol_table import SymbolTable, ScopeStack
 
 
 class SymbolBuilder:
-    def __init__(self, local_builder: LocalOuputBuilder, lst: SymbolTable, file_path: str):
+    def __init__(self, local_builder: LocalOutputBuilder, lst: SymbolTable, file_path: str):
         self.local_builder = local_builder
         self._lst = lst
         self._scope_stack = ScopeStack(self._lst.worker_id, file_path, lst)
