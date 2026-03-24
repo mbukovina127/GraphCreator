@@ -1,8 +1,10 @@
+import os.path
+from pathlib import Path
 from typing import Any, Dict, List
 
 from ray_implementation.structures.context_stack import ContextStack
 from ray_implementation.ast_utils import ASTUtils
-from ray_implementation.builders.local_output_builder import LocalOuputBuilder
+from ray_implementation.builders.local_output_builder import LocalOutputBuilder
 from ray_implementation.structures.local_symbol_table import SymbolTable
 from ray_implementation.structures.util_enums import Context
 
@@ -14,7 +16,7 @@ class CPGBuilder:
     """
     Builds the Code Property Graph (CPG) from the AST and Local Symbol Table
     """
-    def __init__(self, local_builder: LocalOuputBuilder, lst: SymbolTable):
+    def __init__(self, local_builder: LocalOutputBuilder, lst: SymbolTable, file_path: str):
         self.local_builder = local_builder
         self._lst = lst
         self._lexical_scope_stack: List[str] = []
@@ -26,6 +28,7 @@ class CPGBuilder:
         self.knowledge_edges = self.local_builder.get_collection("knowledge_edges")
         self.unresolved_edges: Dict[str, list[Dict]] = {}
 
+        self.file_name = Path(file_path).name
         self._n_counter = 0
         self._e_counter = 0
 
@@ -67,7 +70,8 @@ class CPGBuilder:
         """Creates a custom knowledge node, but defaults to node properties.
             you need to use `self.__insert_knowledge_node()}` to add it to the graph collection
         """
-        node_id = f"{self._lst.worker_id}:node:{node.type if type is None else type}:{self.gen_id()}"
+        #FIXME probably create a variable for Path() as its going to be run a lot
+        node_id = f"{self.file_name}:node:{node.type if type is None else type}:{self.gen_id()}"
         a_node = {
             "_key": node_id,
             "symbol_id": node.id,
@@ -257,7 +261,7 @@ class CPGBuilder:
             #find the function with context
             con, id = self._context_stack.get_context()
             if con == Context.FUN_DECL: # TODO for now just a function but it could also apply to control statements
-                self._create_knowledge_edge(k_node["_key"], id, "has_block")
+                self._create_knowledge_edge(id, k_node["_key"], "has_block")
                 self._context_stack.push_context(k_node["_key"], Context.BLOCK)
                 for c in node.children:
                     self.build(c, file_path)
@@ -471,22 +475,26 @@ class CPGBuilder:
         """
         Build the CPG from the AST node and local symbol table
         """
+
         # pushes scope stack if needed
+        pushed = False
         if ASTUtils.is_different_scope_node(node):
             self._push_scope(node.id)
+            pushed = True
 
-        if self.create_knowledge_node_if_possible(node, file_path):
-            return
+        try:
+            if self.create_knowledge_node_if_possible(node, file_path):
+                return
 
-        # adding reference edges and nodes
-        if self.create_relation_if_possible(node, file_path):
-            return
+            # adding reference edges and nodes
+            if self.create_relation_if_possible(node, file_path):
+                return
 
-        # walk
-        for child in node.children:
-            self.build(child, file_path)
-
-        # pops scope stack
-        if ASTUtils.is_different_scope_node(node):
-            self._pop_scope()
-            pass
+            # walk
+            for child in node.children:
+                self.build(child, file_path)
+        finally:
+            # pops scope stack
+            if ASTUtils.is_different_scope_node(node):
+                self._pop_scope()
+                pass

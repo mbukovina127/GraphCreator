@@ -18,6 +18,11 @@ class CGPWorker:
 
     def analyze_file(self, file_path: str):
         """creates ast and local cgp graph"""
+        # clean up before running the actor to keep it stateless
+        self.ast_manager.clear()
+        self.lst.clear_all()
+        self.graph_manager.clear()
+
         try:
             ast = self.ast_manager.parse(file_path)
         except Exception as e:
@@ -26,7 +31,6 @@ class CGPWorker:
         # Populating the graphs in
         self.graph_manager.generate_graph(ast, file_path)
         graphs = self.graph_manager.get_graphs()
-
         return graphs
 
 
