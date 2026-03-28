@@ -3,8 +3,8 @@
 import ray
 
 from code_analyzer.parse_code import ParallelASTManager
-from ray_implementation.structures.local_symbol_table import SymbolTable
-from ray_implementation.managers.graph_manager import GraphManager
+from ray_implementation.structures import SymbolTable
+from .graph_manager import GraphManager
 
 @ray.remote
 class CGPWorker:

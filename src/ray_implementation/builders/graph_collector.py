@@ -2,7 +2,7 @@
 import os
 from typing import Dict, List, Any, Optional
 
-from ray_implementation import SymbolTable
+from ray_implementation.structures import SymbolTable
 
 
 class GraphCollector:

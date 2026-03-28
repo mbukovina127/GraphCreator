@@ -40,6 +40,9 @@ w = 10
 a = x
 """
 
+SAMPLE_LUA_CONTROL_FLOW = """
+"""
+
 SAMPLE_LUA_BASIC = """
 -- 
 local x = 10
@@ -287,7 +290,7 @@ with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
 
     symbolmanager.build(ast.root_node)
     file_name = os.path.basename(f.name)
-    knowledge_graph_creator = CPGBuilder(localBuilder, lst)
+    knowledge_graph_creator = CPGBuilder(localBuilder, lst, f.name)
 
     knowledge_graph_creator.build(ast.root_node, file_name)
 
@@ -317,7 +320,7 @@ def build_context(lua_code: str):
         lst=lst,
         file_path=file_name
     )
-    cpg_builder = CPGBuilder(builder, lst)
+    cpg_builder = CPGBuilder(builder, lst, file_name)
 
     return file_name, ast, lst, sym_builder, cpg_builder
 
@@ -384,9 +387,7 @@ class TestCPGBuilder:
         symbol_builder.build(ast.root_node)
         cpg_builder.build(ast.root_node, file_name)
 
-        nodes = cpg_builder.local_builder.knowledge_nodes.values()
-        edges = cpg_builder.local_builder.knowledge_edges
-        bloatedmess.export_to_gephi_csv(nodes, edges)
+        bloatedmess.export_from_builder(cpg_builder.local_builder)
 
         print()
 
@@ -452,6 +453,62 @@ class TestCPGBuilder:
         )
     ])
     def test_modules(self, test_file):
+        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
+        symbol_builder.build(ast.root_node)
+        cpg_builder.build(ast.root_node, file_name)
+
+    @pytest.mark.parametrize("test_file", [(
+        """
+        local x = 10
+        if x == 10 then 
+            x = 10 * 2
+            if x == 20 then
+                x = x - 2
+            else if then
+                x = 0
+            end
+        elseif x == 11 then
+            x = 0
+        else 
+            x = 1
+        end
+        """
+    )])
+    def test_if_statement(self, test_file):
+        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
+        symbol_builder.build(ast.root_node)
+        cpg_builder.build(ast.root_node, file_name)
+
+        bloatedmess.export_from_builder(cpg_builder.local_builder)
+
+
+    @pytest.mark.parametrize("test_file", [
+        (
+            """
+            function anyOf(list)
+              local patt = P(false)
+              
+              for i = 1, #list, 1 do
+                patt = P(list[i]) + patt
+              end
+              
+              return patt
+            end"""
+        ),
+        (
+            """
+            function copy(grammar)
+                local newt = {}
+              
+                for k, v in pairs(grammar) do
+                    newt[k] = v
+                end
+              
+                return newt
+            end"""
+        )
+    ])
+    def test_loops(self, test_file):
         file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
         symbol_builder.build(ast.root_node)
         cpg_builder.build(ast.root_node, file_name)

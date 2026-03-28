@@ -104,3 +104,8 @@ def export_to_gephi_csv(
         writer.writeheader()
         for row in processed_edges:
             writer.writerow(row)
+
+def export_from_builder(builder):
+    nodes = builder.knowledge_nodes.values()
+    edges = builder.knowledge_edges
+    export_to_gephi_csv(nodes, edges)

@@ -7,10 +7,8 @@ import logging
 from tree_sitter import Tree
 
 from graph_builder import ASTInserter
-from ray_implementation.builders.symbol_creation import SymbolBuilder
-from ray_implementation.builders.cpg_builder import CPGBuilder
-from ray_implementation.builders.local_output_builder import LocalOutputBuilder
-from ray_implementation.structures.local_symbol_table import SymbolTable
+from ray_implementation.builders import SymbolBuilder, CPGBuilder, LocalOutputBuilder
+from ray_implementation.structures import SymbolTable
 
 logger = logging.getLogger(__name__)
 
