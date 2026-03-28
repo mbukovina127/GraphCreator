@@ -128,6 +128,8 @@ class ASTUtils:
             "identifier": 'ident',
             "function_call": 'call',
             "expression_list": 'exp_list',
+            "binary_expression": 'binary_expression',
+            "if_statement": 'if_statement',
             "assignment_statement": 'assign',
             "block": 'block',
             "return_statement": 'return',

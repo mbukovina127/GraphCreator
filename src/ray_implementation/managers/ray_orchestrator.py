@@ -2,7 +2,7 @@ from typing import List
 
 import ray
 
-from ray_implementation import CGPWorker
+from .cgp_worker import CGPWorker
 
 class RayOrchestrator:
     def __init__(self):
