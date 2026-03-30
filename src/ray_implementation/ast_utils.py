@@ -113,7 +113,8 @@ class ASTUtils:
             "assignment_statement": 'possible_variable',
             "block": 'block',
             "chunk": 'chunk',
-            "function_call": 'module' # case for module definitions
+            "function_call": 'module', # case for module definitions
+            "for_statement": 'for_statement',
         }
         
         return map.get(node.type)

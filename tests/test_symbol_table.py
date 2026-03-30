@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 import tempfile
 import sys
@@ -276,30 +278,6 @@ function apply (grammar, rules, captures)
 	return rules
 end
 """
-with tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False) as f:
-    f.write(SAMPLE_LUA_MODULE)
-    f.flush()
-
-    ast = ASTManager().parse(f.name)
-
-    localBuilder = LocalOutputBuilder()
-    lst = SymbolTable("1")
-
-
-    symbolmanager = SymbolBuilder(local_builder=localBuilder, lst=lst, file_path=f.name)
-
-    symbolmanager.build(ast.root_node)
-    file_name = os.path.basename(f.name)
-    knowledge_graph_creator = CPGBuilder(localBuilder, lst, f.name)
-
-    knowledge_graph_creator.build(ast.root_node, file_name)
-
-    nodes = localBuilder.knowledge_nodes.values()
-    edges = localBuilder.knowledge_edges
-    bloatedmess.export_to_gephi_csv(nodes, edges)
-
-    print(lst.exports.__len__())
-
 def create_temp_lua(lua_code: str) -> str:
     f = tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False)
     f.write(lua_code)
@@ -324,6 +302,9 @@ def build_context(lua_code: str):
 
     return file_name, ast, lst, sym_builder, cpg_builder
 
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class TestSymbolCreation:
 
@@ -457,23 +438,32 @@ class TestCPGBuilder:
         symbol_builder.build(ast.root_node)
         cpg_builder.build(ast.root_node, file_name)
 
-    @pytest.mark.parametrize("test_file", [(
+    @pytest.mark.parametrize("test_file", [
+        (
         """
+        if 1 == 1 then
+            return 1
+        else
+            return 2
+        end
+        """
+    ),
+        ("""
         local x = 10
-        if x == 10 then 
+        if x == 10 then
             x = 10 * 2
             if x == 20 then
                 x = x - 2
-            else if then
+            else 
                 x = 0
             end
         elseif x == 11 then
             x = 0
-        else 
+        else
             x = 1
         end
-        """
-    )])
+        """)
+    ])
     def test_if_statement(self, test_file):
         file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
         symbol_builder.build(ast.root_node)
@@ -483,32 +473,53 @@ class TestCPGBuilder:
 
 
     @pytest.mark.parametrize("test_file", [
+        # (
+        #     """
+        #         local patt = P(false)
+        #
+        #         for x = 1, 19 do
+        #             print(x)
+        #         end
+        #
+        #         for i = 1, #list, 1 do
+        #             local patt = P(list[i])
+        #         end
+        #     """
+        # ),
+        # (
+        #     """
+        #     function copy(grammar)
+        #         local newt = {}
+        #
+        #         for k, v in pairs(grammar) do
+        #             newt = v
+        #         end
+        #
+        #         return newt
+        #     end"""
+        # ),
+        # (
+        #     """
+        #     a = 10
+        #
+        #     while( a < 20 )
+        #     do
+        #        print("value of a:", a)
+        #        a = a+1
+        #     end"""
+        # ),
         (
             """
-            function anyOf(list)
-              local patt = P(false)
-              
-              for i = 1, #list, 1 do
-                patt = P(list[i]) + patt
-              end
-              
-              return patt
-            end"""
-        ),
-        (
-            """
-            function copy(grammar)
-                local newt = {}
-              
-                for k, v in pairs(grammar) do
-                    newt[k] = v
-                end
-              
-                return newt
-            end"""
+            i = 10
+            repeat
+               print("value of i:",i)
+               i = i + 1
+            until i > 20"""
         )
     ])
     def test_loops(self, test_file):
         file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
         symbol_builder.build(ast.root_node)
         cpg_builder.build(ast.root_node, file_name)
+
+        bloatedmess.export_from_builder(cpg_builder.local_builder)

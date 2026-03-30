@@ -31,10 +31,14 @@ class CPGBuilder(CPGDeclarationsMixin):
             pushed = True
 
         try:
+            recursive = False
             if self.create_knowledge_node_if_possible(node, file_path):
-                return
+                recursive = True
 
             if self.create_relation_if_possible(node, file_path):
+                recursive = True
+
+            if recursive:
                 return
 
             for child in node.children:

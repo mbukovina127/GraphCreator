@@ -1,3 +1,4 @@
+from itertools import repeat
 from typing import List, Literal
 from ray_implementation.ast_utils import ASTUtils
 from ray_implementation.builders.local_output_builder import LocalOutputBuilder
@@ -111,6 +112,26 @@ class SymbolBuilder:
                     if parameters.__len__() > 0:
                         self.parameter_stack.extend(parameters) # pushes them onto the stack as they need to be create inside inner scope
 
+            case "for_statement":
+                # finding the identifiers
+                clause = ASTUtils.first_node_of_type(node, "for_numeric_clause")
+                if clause is not None:
+                    identifier = ASTUtils.first_node_of_type(node, "identifier")  # finding the first variable
+                    if identifier is not None:
+                        self.parameter_stack.append(identifier)
+                clause = ASTUtils.nodes_of_type(node, 'for_generic_clause')
+                if clause is not None:
+                    identifier = ASTUtils.first_node_of_type(node, "identifier") # finding the first variable
+                    while True:
+                        if identifier is not None:
+                            self.parameter_stack.append(identifier)
+                        if identifier.next_sibling is None or identifier.next_sibling.type != ",":
+                                break
+                        else:
+                            identifier = identifier.next_sibling.next_sibling # skipping to the next variable
+
+
+
             case "block":
                 while self.parameter_stack.__len__() > 0:
                     param = self.parameter_stack.pop()
@@ -141,7 +162,7 @@ class SymbolBuilder:
         if ASTUtils.is_different_scope_node(node):
             self._push_scope(node.id)
         
-        # adding to local symbol table
+        # FIXME redundant multiple checks
         type = ASTUtils.is_declaration_node(node) # TODO remake into a single function call
         if type is not None:
             self._create_declaration_symbol(type, node)

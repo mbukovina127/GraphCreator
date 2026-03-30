@@ -12,5 +12,6 @@ class Context(Enum):
     BLOCK = auto()
     FUN_DECL = auto()
     IF_STATEMENT = auto() # control statement
-    CONTROL_STATEMNT = auto()
-
+    CONTROL_STATEMENT = auto()
+    LOOP = auto()
+    FOR_CLAUSE = auto()
