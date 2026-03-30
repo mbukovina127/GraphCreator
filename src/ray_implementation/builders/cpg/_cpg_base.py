@@ -46,6 +46,12 @@ class CPGBase:
     def _pop_scope(self):
         return self._lexical_scope_stack.pop()
 
+    def _recurse_with_different_context(self, root, file_path, context_rel_nodes, context):
+        self._context_stack.push_context(context_rel_nodes, context)
+        for c in root.children:
+            self.build(c, file_path)
+        self._context_stack.pop_context()
+
     def _get_nodeid_from_astid(self, ast_id: str):
         try:
             found = self._astId_nodeId_map[ast_id]
@@ -65,19 +71,9 @@ class CPGBase:
             return {}
             # TODO: logging
 
-    def __create_knowledge_node_custom(
-        self,
-        node,
-        type: str | None = None,
-        text: str | None = None,
-        file_path: str | None = None,
-        properties: Dict | None = None,
-    ) -> Dict[str, Any]:
-        """
-        Creates a custom knowledge node, defaulting to the AST node's properties.
-        Call `self.__insert_knowledge_node()` separately to add it to the graph.
-        """
-        node_id = f"{self.file_name}:node:{node.type if type is None else type}:{self.gen_id()}"
+    def _create_knowledge_node(self, node, file_path: str, type: str | None = None, text: str | None = None, properties: Dict | None = None, commit: bool = True) -> Dict[str, Any]:
+        """creates a knowledge node, defaulting to the AST node's properties. commit argument decides wheteher to automatically insert the knowledge node to the graph collection"""
+        node_id = f"{self.file_name}:{node.type if type is None else type}:{self.gen_id()}"
         a_node = {
             "_key": node_id,
             "symbol_id": node.id,
@@ -88,22 +84,13 @@ class CPGBase:
             "file_path": file_path,
             "properties": {} if properties is None else properties,
         }
+        if commit:
+            self.__insert_knowledge_node(node, a_node)
         return a_node
-
-    def _create_knowledge_node(self, node, file_path: str, add_properties: Dict | None = None) -> Dict[str, Any]:
-        k_node = self.__create_knowledge_node_custom(node=node, file_path=file_path, properties=add_properties)
-        try:
-            self.__insert_knowledge_node(node, k_node)
-        except Exception:
-            return {}
-        return k_node
 
     # Expose the private helpers to subclasses under protected names
     def _insert_knowledge_node(self, ast_node, k_node):
         return self.__insert_knowledge_node(ast_node, k_node)
-
-    def _create_knowledge_node_custom(self, node, type=None, text=None, file_path=None, properties=None):
-        return self.__create_knowledge_node_custom(node, type, text, file_path, properties)
 
     def _create_knowledge_edge(self, from_node_id: str, to_node_id: str, edge_type: str) -> Dict[str, Any]:
         edge = {
