@@ -17,7 +17,7 @@ class SymbolBuilder:
         """
         Adds symbol to current scope and local symbol table
         """
-        self._scope_stack.add_to_scope(name, ast_node.id, kind, ast_node.start_byte, ast_node.end_byte) #FIXME probable wrong name
+        self._scope_stack.add_to_scope(name, ast_node.id, kind, ast_node.start_byte, ast_node.end_byte)
         return
 
     def _push_scope(self, s_id: str):
@@ -43,8 +43,8 @@ class SymbolBuilder:
             identifiers = ASTUtils.nodes_of_type(var_list, "identifier")  # list in case of multiple declaration
             # find require calls
 
-            exp_list = ASTUtils.first_node_of_type(symbol_node,"expression_list")  # TODO: check if expression list is correct type
-            list = []  # list of module names
+            exp_list = ASTUtils.first_node_of_type(symbol_node,"expression_list")
+            modules = []  # list of module names
             if exp_list is not None:
                 assignments = [x for x in exp_list.children if x.type in ["identifier", "function_call"]]
 
@@ -57,22 +57,19 @@ class SymbolBuilder:
                             # find the module
                             module = ASTUtils.first_node_of_type(a, "string_content")
                             module_name = ASTUtils.get_text(module)
-                            list.append(module_name)
+                            modules.append(module_name)
                         else:
-                            list.append("")
+                            modules.append("")
 
             for i, ident in enumerate(identifiers):
                 name = ASTUtils.get_text(ident)
-                if list.__len__() > 0 and list[i].__len__() > 0:
-                    kind = "local_module_representation" if kind == "local_variable" else "module_representation"
-                    self.__add_symbol(name, symbol_node, kind)
-                    module_name = list[i]
-                    self._lst.add_import(name, module_name)
-                    pass
+
+                if modules and modules[i]:
+                    kind_mod = "local_module_representation" if kind == "local_variable" else "module_representation"
+                    self.__add_symbol(name, symbol_node, kind_mod)
+                    self._lst.add_import(name, modules[i])
                 else:
                     self.__add_symbol(name, symbol_node, kind)
-
-            # TODO: expression handling
 
         match type:
             case "variable_declaration": # going from variable declaration is always local
@@ -84,7 +81,7 @@ class SymbolBuilder:
                 if ASTUtils.parent_node_of_type(node, "variable_declaration", 1) is not None:
                     return False # this is inside of variable declaration
 
-                kind = "local_variable" if node.parent.children[0].type == "local" else "global_variable" # TEST
+                kind = "local_variable" if node.parent.children[0].type == "local" else "global_variable"
 
                 var_list = ASTUtils.first_node_of_type(node, "variable_list")
                 identifiers = ASTUtils.nodes_of_type(var_list, "identifier")
@@ -119,6 +116,7 @@ class SymbolBuilder:
                     identifier = ASTUtils.first_node_of_type(node, "identifier")  # finding the first variable
                     if identifier is not None:
                         self.parameter_stack.append(identifier)
+
                 clause = ASTUtils.nodes_of_type(node, 'for_generic_clause')
                 if clause is not None:
                     identifier = ASTUtils.first_node_of_type(node, "identifier") # finding the first variable
@@ -129,8 +127,6 @@ class SymbolBuilder:
                                 break
                         else:
                             identifier = identifier.next_sibling.next_sibling # skipping to the next variable
-
-
 
             case "block":
                 while self.parameter_stack.__len__() > 0:
@@ -146,6 +142,7 @@ class SymbolBuilder:
                     self.__add_symbol(module_name, node, kind)
 
                 pass
+
             case "chunk":
                 pass
         
@@ -156,7 +153,6 @@ class SymbolBuilder:
         """
         Recursively walk the AST and create symbols
         """
-        # TODO: Robust id generation
 
         # pushes scope stack if needed
         if ASTUtils.is_different_scope_node(node):

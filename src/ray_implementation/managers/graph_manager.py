@@ -17,32 +17,34 @@ class GraphManager:
     def __init__(self, lst: SymbolTable):
         self.local_out_builder = LocalOutputBuilder()
         self._local_symbol_table = lst
+        self.knowledge_graph_builder: CPGBuilder | None = None
         self.file = ""
         self._ran = False
 
     
-    def generate_graph(self, ast: Tree, file_path: str ): #TODO:  return type
+    def generate_graph(self, ast: Tree, file_path: str):
         self.file = file_path
-        logger.info(f"[graph_manager][worker_id={self._local_symbol_table.worker_id}] Inserting ast into a graph...")
-        self.ast_insterter = ASTInserter(self.local_out_builder)
-        self.ast_insterter.insert_node(ast.root_node) # inserts the ast and stores it into l_out_builder
-        logger.info(f"[graph_manager][worker_id={self._local_symbol_table.worker_id}] Inserting ast into a graph complete.")
+        wid = self._local_symbol_table.worker_id
+        try:
+            logger.info(f"[graph_manager][worker_id={wid}] Inserting AST into graph...")
+            self.ast_inserter = ASTInserter(self.local_out_builder)
+            self.ast_inserter.insert_node(ast.root_node)
+            logger.info(f"[graph_manager][worker_id={wid}] AST insertion complete.")
 
-        # create a symbol table
-        logger.info(f"[graph_manager][worker_id={self._local_symbol_table.worker_id}] Building local symbol table...")
-        self.symbol_builder = SymbolBuilder(self.local_out_builder, self._local_symbol_table, file_path)
-        self.symbol_builder.build(ast.root_node)
-        logger.info(f"[graph_manager][worker_id={self._local_symbol_table.worker_id}] Local symbol table built.")
+            logger.info(f"[graph_manager][worker_id={wid}] Building local symbol table...")
+            self.symbol_builder = SymbolBuilder(self.local_out_builder, self._local_symbol_table, file_path)
+            self.symbol_builder.build(ast.root_node)
+            logger.info(f"[graph_manager][worker_id={wid}] Local symbol table built.")
 
-        # create a knowledge graph
-        logger.info(f"[graph_manager][worker_id={self._local_symbol_table.worker_id}] Creating knowledge graph...")
-        self.knowledge_graph_builder = CPGBuilder(self.local_out_builder, self._local_symbol_table, file_path)
-        self.knowledge_graph_builder.build(ast.root_node, file_path)
-        logger.info(f"[graph_manager][worker_id={self._local_symbol_table.worker_id}] Knowledge graph built.")
-
+            logger.info(f"[graph_manager][worker_id={wid}] Creating knowledge graph...")
+            self.knowledge_graph_builder = CPGBuilder(self.local_out_builder, self._local_symbol_table, file_path)
+            self.knowledge_graph_builder.build(ast.root_node, file_path)
+            logger.info(f"[graph_manager][worker_id={wid}] Knowledge graph built.")
+        except Exception as e:
+            logger.error(f"[graph_manager][worker_id={wid}] Pipeline failed for {file_path}: {e}")
+            raise
 
         self._ran = True
-        return
 
     def get_graphs(self):
         """Returns a json format of ast_graph, knowledge_graph, and unresolved_edges"""
@@ -55,11 +57,14 @@ class GraphManager:
         ast_graph = self.local_out_builder.export_ast_graph()
         knowledge_graph = self.local_out_builder.export_knowledge_graph()
         logger.info(f"[graph_manager][worker_id={self._local_symbol_table.worker_id}] Exporting graphs complete")
+        # CPGBuilder accumulates unresolved edges as Dict[symbol_name, list[{node_id, edge_type, ...}]].
+        # SymbolTable.unresolved is never populated, so we take from the builder directly.
+        cpg_unresolved = self.knowledge_graph_builder.unresolved_edges if self.knowledge_graph_builder else {}
         return {
             "file": self.file,
             "ast_graph": ast_graph,
             "knowledge_graph": knowledge_graph,
-            "unresolved_edges": self._local_symbol_table.get_unresolved_edges(),
+            "unresolved_edges": cpg_unresolved,
             "exports": self._local_symbol_table.get_exports(),
             "imports": self._local_symbol_table.get_imports()
         }

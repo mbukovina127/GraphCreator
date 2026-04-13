@@ -108,4 +108,4 @@ def export_to_gephi_csv(
 def export_from_builder(builder):
     nodes = builder.knowledge_nodes.values()
     edges = builder.knowledge_edges
-    export_to_gephi_csv(nodes, edges)
+    export_to_gephi_csv(nodes, edges, "k_nodes.csv", "k_edges.csv")

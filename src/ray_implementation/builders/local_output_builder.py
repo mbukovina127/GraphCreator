@@ -5,13 +5,9 @@ Instead of writing directly to ArangoDB, this class accumulates vertices and edg
 in memory and can export them as a JSON structure for publishing to the
 graph-updates Dapr topic.
 """
-#TODO: description
-#TODO: node_id_generation
-#TODO: output structure
 
 
 from typing import Dict, List, Any, Optional
-import uuid
 
 from graph_builder.output_builder import CollectionProxy, EdgeCollectionProxy, GraphOutputBuilder
 
@@ -65,10 +61,7 @@ class LocalOutputBuilder:
     # =========================================================================
     # ID generation (mimics ArangoHandler.get_next_node_id)
     # =========================================================================
-    
-    #TODO: leaning towards a structure of filename:type:counter 
-    # types: vr -varioble, fn -function, cl -call, 
-    #
+
     def gen_node_id_with_type(self, collection_name: str = "", type: str = ""):
         if collection_name == "" or type == "":
             return None

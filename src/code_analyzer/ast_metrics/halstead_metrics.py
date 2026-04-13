@@ -1,4 +1,6 @@
 import math
+from typing import Any, Dict
+
 
 def get_operands_operators(node, not_leaves=None, operands=None, operators=None, operator_count=0, operand_count=0):
     # initialize sets
@@ -95,3 +97,7 @@ def calculate_halstead_metrics(node):
         "T": round(time_, 4),
         "B": round(bugs, 4)
     }
+
+def calculate_halstead_metrics_agr(node):
+    """:return: Wrapped return of calculate_halstead_metrics"""
+    return "halstead_metrics", calculate_halstead_metrics(node)

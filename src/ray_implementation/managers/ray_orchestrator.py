@@ -10,7 +10,7 @@ class RayOrchestrator:
         pass
 
     def create_workers(self, number_of_workers) -> List:
-        ray.init()
+        ray.init(ignore_reinit_error=True) #TODO Temprorary
         self.workers = [
             CGPWorker.remote(worker_id=f"worker_{i}")
             for i in range(number_of_workers)
@@ -24,9 +24,9 @@ class RayOrchestrator:
 
         futures = []
 
-        for i, files in enumerate(files):
-            worker = self.workers[ i % len(self.workers) ]
-            futures.append(worker.analyze_file.remote(files["path"]))
+        for i, file_info in enumerate(files):
+            worker = self.workers[i % len(self.workers)]
+            futures.append(worker.analyze_file.remote(file_info["path"]))
 
         return futures
 

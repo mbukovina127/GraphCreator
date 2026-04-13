@@ -26,7 +26,7 @@ class ASTUtils:
                 return (root, dist)
             if dist >= threshold:
                 return None
-            root = root.parent # FIXME test if works
+            root = root.parent
             dist += 1
         return None
 
@@ -82,11 +82,6 @@ class ASTUtils:
         return node.type in [
             "chunk",
             "block",
-            # "function_declaration", # FIXME decide
-            # "do_statement",
-            # "while_statement",
-            # "for_statement",
-            # "if_statement",
         ]
    
     @staticmethod
@@ -124,7 +119,6 @@ class ASTUtils:
         """
         Check if the AST node is a reference node
         """
-        #TODO need to add condition for indentifiers _is_assignment _is_argument
         map = {
             "identifier": 'ident',
             "function_call": 'call',
