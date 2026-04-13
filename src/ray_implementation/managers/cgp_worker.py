@@ -1,10 +1,13 @@
-#TODO: description
-#TODO: Implement graph Manager
+import logging
+
 import ray
 
 from code_analyzer.parse_code import ParallelASTManager
 from ray_implementation.structures import SymbolTable
 from .graph_manager import GraphManager
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 @ray.remote
 class CGPWorker:
@@ -22,11 +25,13 @@ class CGPWorker:
         self.ast_manager.clear()
         self.lst.clear_all()
         self.graph_manager.clear()
+        logger.info(f"[Worker_id:{self.lst.worker_id}] Cleared previous state of CPGWorker: {file_path}")
 
         try:
             ast = self.ast_manager.parse(file_path)
         except Exception as e:
-            return # TODO: logging
+            logger.error(f"[Worker_id:{self.lst.worker_id}] Failed to parse file: {file_path}: {e}")
+            return None
 
         # Populating the graphs in
         self.graph_manager.generate_graph(ast, file_path)

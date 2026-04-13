@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Any
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,7 @@ class SymbolTable:
         """
         Look upwards in the stack and find the symbol with matching name
         
-        @return: symbol if found else None
+        :return: symbol if found else None
         """
         #FIXME it can return multiple symbols with different kinds
         scope = self.scopes.get(scope_id)
@@ -98,7 +98,7 @@ class SymbolTable:
         """
         Look upwards in the stack and find the symbol with matching kind
 
-        @return: `unordered list` of all found symbols in the same scope
+        :return: `unordered list` of all found symbols in the same scope
         """
         scope = self.scopes.get(scope_id)
         out = []
@@ -123,9 +123,14 @@ class SymbolTable:
             scope = self.scopes[scope.parent] if scope.parent is not None else None
         return None
 
-
-#TODO maybe seperate lst logic from this
-class ScopeStack: 
+    def export_to_json(self) -> Dict[Any, Any]:
+        """Exports symbol table to json"""
+        return {
+            "scopes": self.scopes,
+            "exports": self.exports,
+            "imports": self.imports,
+        }
+class ScopeStack:
     """
     Structure that maintains context scope and saves its state to local symbol table
     """

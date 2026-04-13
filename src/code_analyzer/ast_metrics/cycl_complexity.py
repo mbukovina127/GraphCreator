@@ -1,6 +1,8 @@
-# function calculates cyclomatic complexity recursively
-# starts with cc=1 as a base of every function
+from typing import Dict
+
+
 def calculate_cyclomatic_complexity(node, cc=1):
+    """function calculates cyclomatic complexity recursively starts with cc=1 as a base of every function"""
     # if this node is a decision point, increment the counter
     if node.type in [      
         "if_statement", 
@@ -15,3 +17,7 @@ def calculate_cyclomatic_complexity(node, cc=1):
         cc = calculate_cyclomatic_complexity(child, cc)
 
     return cc
+
+def calculate_cyclomatic_complexity_agr(node):
+    """Wrapped cyclomatic complexity calculation"""
+    return "cyclomatic_complexity", calculate_cyclomatic_complexity(node)

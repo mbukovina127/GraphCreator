@@ -1,283 +1,25 @@
 import logging
-
 import pytest
 import tempfile
 import sys
 import os
 
-from code_analyzer.parse_code import ParallelASTManager
-from src.ray_implementation import bloatedmess
+from ray_implementation.bloatedmess import export_to_gephi_csv, export_from_builder
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from code_analyzer import ASTManager
+from code_analyzer.parse_code import ParallelASTManager
 from ray_implementation import SymbolBuilder, CPGBuilder, LocalOutputBuilder, SymbolTable
+from ray_implementation import bloatedmess
 
-SAMPLE_LUA_VAR_VERY_SIMPLE = """
-local a = 5
-a = 1
-"""
-
-# 3 symbols, 2 scope, 2 contains, 4 referes_to edges, 2 has_argument edges.... a lot is going on
-SAMPLE_LUA_FUN_VERY_SIMPLE = """
-local function add(a,b)
-    print(a)
-    return a + b
-add(a,b)
-"""
-
-SAMPLE_LUA_VAR_SIMPLE = """
-local x = 10
-local y = 1 + 1
-local z = y + 5
-local w
-
-GLOBAL = 100
-
-x = 1
-y = 2
-w = 10
-
--- undefined
-a = x
-"""
-
-SAMPLE_LUA_CONTROL_FLOW = """
-"""
-
-SAMPLE_LUA_BASIC = """
--- 
-local x = 10
-local y = 5
-local z = 3 + (10 + 2) 
-
-y = x
-
--- function that adds two numbers
-local function add(a,b)
-    local result
-    result = a + b
-    return result
-    
-local return_value = add(1,2)
-print(add(x,y))
-"""
-SAMPLE_LUA_MODULE = """
-module 'leg.parsing'
-            
---this should not be in module
-local function add(x,y)
-    return x + y
-end
-
---this should be in module
-function parse(file)
-    local output
-    tree-sitting(file, output)
-    return output 
-end
-
-"""
-SAMPLE_LUA_COMPLEX = """
-local assert  = assert
-local pairs   = pairs
-local type    = type
-
--- imported modules
-local lpeg = require 'lpeg'
-
--- imported functions
-local P, V = lpeg.P, lpeg.V
-
--- module declaration
-module 'leg.grammar'
-
---[[ 
-Returns a pattern which matches any of the patterns received.
-
-**Example:**
-``
-local g, s, m = require 'leg.grammar', require 'leg.scanner', require 'lpeg'
-
--- -- match numbers or operators, capture the numbers
-print( (g.anyOf { '+', '-', '%*', '/', m.C(s.NUMBER) }):match '34.5@23 %* 56 / 45 - 45' )
--- --> prints 34.5
-``
-
-**Parameters:**
-* `list`: a list of zero or more LPeg patterns or values which can be fed to [http://www.inf.puc-rio.br/~roberto/lpeg.html#lpeg lpeg.P].
-
-**Returns:**
-* a pattern which matches any of the patterns received.
---]]
-function anyOf(list)
-  local patt = P(false)
-  
-  for i = 1, #list, 1 do
-    patt = P(list[i]) + patt
-  end
-  
-  return patt
-end
-
---[=[
-Returns a pattern which matches a list of `patt`s, separated by `sep`.
-
-local assert  = assert
-local pairs   = pairs
-local type    = ty
-**Example:** matching comma-separated values:
-``
-local g, m = require 'leg.grammar', require 'lpeg'
-
--- -- separator
-local sep = m.P',' + m.P'\n'
-
--- -- element: anything but sep, capture it
-local elem = m.C((1 - sep)^0)
-
--- -- pattern
-local patt = g.listOf(elem, sep)
-
--- -- matching
-print( patt:match %[%[a, b, 'christmas eve'
-  d, evening; mate!
-  f%]%])
--- --> prints out "a        b       'christmas eve'  d        evening; mate! f"
-``
-
-**Parameters:**
-* `patt`: a LPeg pattern.
-* `sep`: a LPeg pattern.
-
-**Returns:**
-* the following pattern: ``patt %* (sep %* patt)^0``
---]=]
-function listOf(patt, sep)
-  patt, sep = P(patt), P(sep)
-  
-  return patt * (sep * patt)^0
-end
+logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
 
 
---[[ 
-A capture function, made so that `patt / C` is equivalent to `m.C(patt)`. It's intended to be used in capture tables, such as those required by [#function_pipe pipe] and [#function_apply apply].
---]]
-function C(...) return ... end
+# ──────────────────────────────────────────────────────────────────────────────/
+# Helpers
+# ──────────────────────────────────────────────────────────────────────────────
 
---[[ 
-A capture function, made so that `patt / Ct` is equivalent to `m.Ct(patt)`. It's intended to be used in capture tables, such as those required by [#function_pipe pipe] and [#function_apply apply].
---]]
-function Ct(...) return { ... } end
-
---[[
-Creates a shallow copy of `grammar`.
-
-**Parameters:**
-* `grammar`: a regular table.
-
-**Returns:**
-* a newly created table, with `grammar`'s keys and values.
---]]
-function copy(grammar)
-	local newt = {}
-  
-	for k, v in pairs(grammar) do
-		newt[k] = v
-	end
-  
-	return newt
-end
-
---[[
-[#section_Completing Completes] `dest` with `orig`.
-
-**Parameters:**
-* `dest`: the new grammar. Must be a table.
-* `orig`: the original grammar. Must be a table.
-
-**Returns:**
-* `dest`, with new rules inherited from `orig`.
---]]
-function complete (dest, orig)
-	for rule, patt in pairs(orig) do
-		if not dest[rule] then
-			dest[rule] = patt
-		end
-	end
-  
-	return dest
-end
-
---[[
-[#section_Piping Pipes] the captures in `orig` to the ones in `dest`.
-
-`dest` and `orig` should be tables, with each key storing a capture function. Each capture in `dest` will be altered to use the results for the matching one in `orig` as input, using function composition. Should `orig` possess keys not in `dest`, `dest` will copy them.
-
-**Parameters:**
-* `dest`: a capture table.
-* `orig`: a capture table.
-
-**Returns:**
-* `dest`, suitably modified.
---]]
-function pipe (dest, orig)
-	for k, vorig in pairs(orig) do
-		local vdest = dest[k]
-		if vdest then
-			dest[k] = function(...) return vdest(vorig(...)) end
-		else
-			dest[k] = vorig
-		end
-	end
-	
-	return dest
-end
-
---[[
-[#section_Completing Completes] `rules` with `grammar` and then [#Applying applies] `captures`.     
-
-`rules` can either be:
-* a single pattern, which is taken to be the new initial rule, 
-* a possibly incomplete LPeg grammar, as per [#function_complete complete], or 
-* `nil`, which means no new rules are added.
-
-`captures` can either be:
-* a capture table, as per [#function_pipe pipe], or
-* `nil`, which means no captures are applied.
-
-**Parameters:**
-* `grammar`: the old grammar. It stays unmodified.
-* `rules`: optional, the new rules. 
-* `captures`: optional, the final capture table.
-
-**Returns:**
-* `rules`, suitably augmented by `grammar` and `captures`.
---]]
-function apply (grammar, rules, captures)
-  if rules == nil then
-    rules = {}
-  elseif type(rules) ~= 'table' then
-    rules = { rules }
-  end
-  
-  complete(rules, grammar)
-  
-  if type(grammar[1]) == 'string' then
-    rules[1] = lpeg.V(grammar[1])
-  end
-	
-	if captures ~= nil then
-		assert(type(captures) == 'table', 'captures must be a table')
-    
-		for rule, cap in pairs(captures) do
-			rules[rule] = rules[rule] / cap
-		end
-	end
-  
-	return rules
-end
-"""
 def create_temp_lua(lua_code: str) -> str:
     f = tempfile.NamedTemporaryFile(mode='w', suffix='.lua', delete=False)
     f.write(lua_code)
@@ -285,241 +27,573 @@ def create_temp_lua(lua_code: str) -> str:
     f.close()
     return f.name
 
+
 def build_context(lua_code: str):
     file_name = create_temp_lua(lua_code)
     parser = ParallelASTManager("1")
     builder = LocalOutputBuilder()
     lst = SymbolTable("1")
-
     ast = parser.parse(file_name)
-
-    sym_builder = SymbolBuilder(
-        local_builder=builder,
-        lst=lst,
-        file_path=file_name
-    )
+    sym_builder = SymbolBuilder(local_builder=builder, lst=lst, file_path=file_name)
     cpg_builder = CPGBuilder(builder, lst, file_name)
-
     return file_name, ast, lst, sym_builder, cpg_builder
 
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+def build_symbol_table(lua_code: str):
+    """Run SymbolBuilder, return (ast, lst)."""
+    _, ast, lst, sym_builder, _ = build_context(lua_code)
+    sym_builder.build(ast.root_node)
+    return ast, lst
+
+
+def build_cpg(lua_code: str):
+    """Run SymbolBuilder + CPGBuilder, return (file_name, ast, lst, cpg)."""
+    file_name, ast, lst, sym_builder, cpg = build_context(lua_code)
+    sym_builder.build(ast.root_node)
+    cpg.build(ast.root_node, file_name)
+    return file_name, ast, lst, cpg
+
+
+def kg_nodes_of_type(cpg: CPGBuilder, node_type: str):
+    return cpg.local_builder.get_nodes_by_type("knowledge_nodes", node_type)
+
+
+def kg_edges_of_relation(cpg: CPGBuilder, relation: str):
+    return [e for e in cpg.local_builder.knowledge_edges if e["relation"] == relation]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Symbol Table Tests
+# ──────────────────────────────────────────────────────────────────────────────
 
 class TestSymbolCreation:
 
-    @pytest.mark.parametrize('test_file,exp_local,exp_global', [
-        ("""local a = 5\na = 1""",1,0),
-        ("""local a\na = 1""",1,0),
-        ("""a = 1""",0,1),
-        ("""a = 1\na = 2""",0,1)
-    ])
-    def test_simple_variable_declaration(self, test_file, exp_local, exp_global):
-        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
-        symbol_builder.build(ast.root_node)
+    # ── Variables ─────────────────────────────────────────────────────────────
 
+    @pytest.mark.parametrize("code, exp_local, exp_global", [
+        ("local a = 5\na = 1",   1, 0),
+        ("local a\na = 1",       1, 0),
+        ("a = 1",                0, 1),
+        ("a = 1\na = 2",         0, 1),   # re-assignment, no second symbol
+        ("local a\nlocal b",     2, 0),
+        ("a = 1\nb = 2",         0, 2),
+    ])
+    def test_variable_declaration(self, code, exp_local, exp_global):
+        ast, lst = build_symbol_table(code)
         assert len(lst.scope_lookup_by_kind(ast.root_node.id, "local_variable")) == exp_local
         assert len(lst.scope_lookup_by_kind(ast.root_node.id, "global_variable")) == exp_global
 
-    @pytest.mark.parametrize("test_file,exp_local,exp_global", [
-        ("""local function add(a,b)\n\treturn a + b\nend""",1,0),
-        ("""function add(a,b)\n\treturn a + b\nend""",0,1)
-    ])
-    def test_simple_function_definition(self, test_file,exp_local,exp_global):
-        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
-        symbol_builder.build(ast.root_node)
+    def test_variable_name_in_symbol_table(self):
+        ast, lst = build_symbol_table("local x = 10")
+        sym = lst.scope_lookup_by_name(ast.root_node.id, "x")
+        assert sym is not None
+        assert sym.name == "x"
+        assert sym.kind == "local_variable"
 
-        assert lst.exports.__len__() == 3  # 3 symbols
-        assert lst.scopes.__len__() == 2
+    def test_multiple_declarations_same_name_only_one_symbol(self):
+        """Re-assigning a variable should not add a second symbol."""
+        ast, lst = build_symbol_table("local a = 1\na = 2\na = 3")
+        syms = lst.scope_lookup_by_kind(ast.root_node.id, "local_variable")
+        assert len(syms) == 1
+
+    # ── Functions ─────────────────────────────────────────────────────────────
+
+    @pytest.mark.parametrize("code, exp_local, exp_global, exp_params", [
+        ("local function add(a, b)\n\treturn a + b\nend", 1, 0, 2),
+        ("function add(a, b)\n\treturn a + b\nend",       0, 1, 2),
+        ("local function f()\n\treturn 1\nend",           1, 0, 0),
+        ("function g(x)\n\treturn x\nend",                0, 1, 1),
+    ])
+    def test_function_declaration(self, code, exp_local, exp_global, exp_params):
+        ast, lst = build_symbol_table(code)
         assert len(lst.scope_lookup_by_kind(ast.root_node.id, "local_function")) == exp_local
         assert len(lst.scope_lookup_by_kind(ast.root_node.id, "global_function")) == exp_global
+        assert len([x for x, sym in lst.exports.items() if sym.kind == "parameter"]) == exp_params
+        assert len(lst.scopes) == 2  # chunk scope + function body scope
 
-    @pytest.mark.parametrize("test_file", [
-        """
-        local a, b = require "module", require "second_module"
-        """
-    ])
-    def test_require_modules(self, test_file):
-        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
-        symbol_builder.build(ast.root_node)
+    def test_function_symbol_lookup_by_name(self):
+        ast, lst = build_symbol_table("local function greet(name)\n\treturn name\nend")
+        sym = lst.scope_lookup_by_name(ast.root_node.id, "greet")
+        assert sym is not None
+        assert sym.kind == "local_function"
 
-        assert lst.imports["a"] == 'module'
-        assert lst.imports["b"] == 'second_module'
+    def test_two_functions_both_in_symbol_table(self):
+        code = "function add(a, b)\n\treturn a + b\nend\nfunction sub(a, b)\n\treturn a - b\nend"
+        ast, lst = build_symbol_table(code)
+        assert lst.scope_lookup_by_name(ast.root_node.id, "add") is not None
+        assert lst.scope_lookup_by_name(ast.root_node.id, "sub") is not None
+        assert len(lst.scope_lookup_by_kind(ast.root_node.id, "global_function")) == 2
+
+    # ── Require / module imports ───────────────────────────────────────────────
+
+    def test_require_single(self):
+        ast, lst = build_symbol_table('local m = require("math.utils")')
+        assert "m" in lst.imports
+        assert lst.imports["m"] == "math.utils"
+
+    def test_require_multiple_same_line(self):
+        ast, lst = build_symbol_table('local a, b = require "module_a", require "module_b"')
+        assert lst.imports.get("a") == "module_a"
+        assert lst.imports.get("b") == "module_b"
+
+    def test_require_symbol_kind_is_module_representation(self):
+        """Variable bound to require() must be tagged as local_module_representation."""
+        ast, lst = build_symbol_table('local m = require("utils")')
+        sym = lst.scope_lookup_by_name(ast.root_node.id, "m")
+        assert sym is not None
+        assert sym.kind == "local_module_representation"
+
+    def test_require_different_quoting_styles(self):
+        """require accepts both single-quoted and double-quoted strings."""
+        ast, lst = build_symbol_table("local a = require 'mod.a'\nlocal b = require(\"mod.b\")")
+        assert lst.imports.get("a") == "mod.a"
+        assert lst.imports.get("b") == "mod.b"
+
+    def test_require_two_modules_both_marked(self):
+        """Both variables should be module_representation when both sides are require."""
+        ast, lst = build_symbol_table('local a, b = require "mod_a", require "mod_b"')
+        sym_a = lst.scope_lookup_by_name(ast.root_node.id, "a")
+        sym_b = lst.scope_lookup_by_name(ast.root_node.id, "b")
+        assert sym_a.kind == "local_module_representation"
+        assert sym_b.kind == "local_module_representation"
+
+    # ── Module declaration ─────────────────────────────────────────────────────
+
+    def test_module_declaration_creates_symbol(self):
+        ast, lst = build_symbol_table("module 'leg.parsing'")
+        sym = lst.scope_lookup_by_name(ast.root_node.id, "leg.parsing")
+        assert sym is not None
+        assert sym.kind == "module"
+
+    def test_module_declaration_name_extracted(self):
+        ast, lst = build_symbol_table("module 'mypackage.core'")
+        sym = lst.scope_lookup_by_name(ast.root_node.id, "mypackage.core")
+        assert sym is not None
+        assert sym.name == "mypackage.core"
+
+    def test_module_functions_registered_in_symbol_table(self):
+        """Functions declared after a module statement should still be tracked."""
+        code = "module 'mymod'\nfunction foo(a)\n\treturn a\nend"
+        ast, lst = build_symbol_table(code)
+        foo = lst.scope_lookup_by_name(ast.root_node.id, "foo")
+        assert foo is not None
+        assert foo.kind == "global_function"
+
+    def test_module_with_local_and_global_functions(self):
+        code = """
+module 'net.utils'
+
+local function helper(x)
+    return x
+end
+
+function public_fn(a, b)
+    return helper(a) + b
+end
+"""
+        ast, lst = build_symbol_table(code)
+        assert lst.scope_lookup_by_name(ast.root_node.id, "helper") is not None
+        assert lst.scope_lookup_by_name(ast.root_node.id, "public_fn") is not None
+        assert len(lst.scope_lookup_by_kind(ast.root_node.id, "local_function")) == 1
+        assert len(lst.scope_lookup_by_kind(ast.root_node.id, "global_function")) == 1
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CPG Builder Tests
+# ──────────────────────────────────────────────────────────────────────────────
 
 class TestCPGBuilder:
 
-    @pytest.mark.parametrize("test_file,exp_local,exp_global", [
-        ("""local a = 5\na = 1""",1,0), # file
-        ("""local a\na = 1""",1,0),
-        ("""a = 1""",0,1),
-        ("""a = 1\na = 2""",0,1)
+    # ── Always-present chunk node ──────────────────────────────────────────────
+
+    def test_chunk_node_always_created(self):
+        _, ast, lst, cpg = build_cpg("local x = 1")
+        assert len(kg_nodes_of_type(cpg, "chunk")) == 1
+
+    # ── Variables ─────────────────────────────────────────────────────────────
+
+    @pytest.mark.parametrize("code, exp_local, exp_global", [
+        ("local a = 5\na = 1",   1, 0),
+        ("local a\na = 1",       1, 0),
+        ("a = 1",                0, 1),
+        ("a = 1\na = 2",         0, 1),
     ])
+    def test_variable_declaration_nodes(self, code, exp_local, exp_global):
+        _, ast, lst, cpg = build_cpg(code)
+        assert len(kg_nodes_of_type(cpg, "local_variable_declaration")) == exp_local
+        assert len(kg_nodes_of_type(cpg, "global_variable_declaration")) == exp_global
 
-    def test_simple_variable(self, test_file, exp_local, exp_global):
-        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
-        symbol_builder.build(ast.root_node)
-        cpg_builder.build(ast.root_node, file_name)
+    def test_multiple_local_variables_each_get_a_node(self):
+        _, ast, lst, cpg = build_cpg("local x = 10\nlocal y = 20\nlocal z = 30")
+        assert len(kg_nodes_of_type(cpg, "local_variable_declaration")) == 3
 
-        assert cpg_builder.local_builder.get_nodes_by_type("knowledge_nodes", "local_variable_declaration").__len__() == exp_local # chunk and variable declaration + 2 identifiers
-        assert cpg_builder.local_builder.get_nodes_by_type("knowledge_nodes", "global_variable_declaration").__len__() == exp_global # chunk contains variable, variable declared, variable assigned
+    def test_variable_declares_edge_exists(self):
+        """The scope (chunk) node should have a 'declares' edge to the local variable."""
+        _, ast, lst, cpg = build_cpg("local a = 5")
+        declares_edges = kg_edges_of_relation(cpg, "declares")
+        assert len(declares_edges) >= 1
 
-    def test_less_simple_variable(self):
-        file_name, ast, lst, symbol_builder, cpg_builder = build_context(SAMPLE_LUA_VAR_SIMPLE)
-        symbol_builder.build(ast.root_node)
-        cpg_builder.build(ast.root_node, file_name)
+    def test_local_variable_has_name_property(self):
+        _, ast, lst, cpg = build_cpg("local x = 42")
+        nodes = kg_nodes_of_type(cpg, "local_variable_declaration")
+        assert len(nodes) == 1
+        assert nodes[0].get("properties", {}).get("name") == "x"
 
-        bloatedmess.export_from_builder(cpg_builder.local_builder)
+    # ── Functions ─────────────────────────────────────────────────────────────
 
-        print()
-
-    @pytest.mark.parametrize("test_file", [
-        (
-            """
-            local function add(x,y)
-                return x + y
-            end
-            """
-        ),
-        (
-            """
-            function add(x,y)
-                return x + y
-            end
-            """
-        ),
-        (
-            """
-            function add(x,y)
-                local a = x
-                b = x + y
-                return b
-            end
-            """
-        ),
-        (
-            """
-            function add(x,y)
-                print("adding numbers")
-                return x + y
-            end
-            """
-        )
+    @pytest.mark.parametrize("code, exp_type", [
+        ("local function add(x,y)\n\treturn x+y\nend", "local_function_definition"),
+        ("function add(x,y)\n\treturn x+y\nend",       "global_function_definition"),
     ])
-    def test_simple_function(self, test_file):
-        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
-        symbol_builder.build(ast.root_node)
-        cpg_builder.build(ast.root_node, file_name)
+    def test_function_definition_node_created(self, code, exp_type):
+        _, ast, lst, cpg = build_cpg(code)
+        fns = kg_nodes_of_type(cpg, exp_type)
+        assert len(fns) == 1
 
-        print()
-        print(f"knowledge_nodes:{cpg_builder.local_builder.knowledge_nodes.__len__()} and knowledge_edges:{cpg_builder.local_builder.knowledge_edges.__len__()}")
+    def test_function_has_block_edge(self):
+        _, ast, lst, cpg = build_cpg("local function add(x,y)\n\treturn x+y\nend")
+        fns = kg_nodes_of_type(cpg, "local_function_definition")
+        fn_id = fns[0]["_key"]
+        has_block = [e for e in kg_edges_of_relation(cpg, "has_block") if e["_from"] == fn_id]
+        assert len(has_block) == 1, "Function should have exactly one has_block edge"
 
-    @pytest.mark.dependency(depends=["test_simple_variable" "test_simple_function"])
-    @pytest.mark.parametrize("test_file", [
-        (
-            """
-            module 'leg.parsing'
-            
-            --this should not be in module
-            local function add(x,y)
-                return x + y
-            end
-            
-            --this should be in module
-            function parse(file)
-                local output
-                tree-sitting(file, output)
-                return output 
-            end
-            """
-        )
-    ])
-    def test_modules(self, test_file):
-        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
-        symbol_builder.build(ast.root_node)
-        cpg_builder.build(ast.root_node, file_name)
+    def test_function_with_params_has_parameter_edges(self):
+        _, ast, lst, cpg = build_cpg("local function add(x, y)\n\treturn x+y\nend")
+        fns = kg_nodes_of_type(cpg, "local_function_definition")
+        fn_id = fns[0]["_key"]
+        param_edges = [e for e in kg_edges_of_relation(cpg, "has_parameters") if e["_from"] == fn_id]
+        assert len(param_edges) == 2
 
-    @pytest.mark.parametrize("test_file", [
-        (
-        """
-        if 1 == 1 then
-            return 1
-        else
-            return 2
-        end
-        """
-    ),
-        ("""
-        local x = 10
-        if x == 10 then
-            x = 10 * 2
-            if x == 20 then
-                x = x - 2
-            else 
-                x = 0
-            end
-        elseif x == 11 then
-            x = 0
-        else
-            x = 1
-        end
-        """)
-    ])
-    def test_if_statement(self, test_file):
-        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
-        symbol_builder.build(ast.root_node)
-        cpg_builder.build(ast.root_node, file_name)
+    def test_function_no_params_no_parameter_edges(self):
+        _, ast, lst, cpg = build_cpg("local function f()\n\treturn 1\nend")
+        fns = kg_nodes_of_type(cpg, "local_function_definition")
+        fn_id = fns[0]["_key"]
+        param_edges = [e for e in kg_edges_of_relation(cpg, "has_parameters") if e["_from"] == fn_id]
+        assert len(param_edges) == 0
 
-        bloatedmess.export_from_builder(cpg_builder.local_builder)
+    def test_function_has_metrics(self):
+        """Each function should have a metrics node attached via has_metrics."""
+        _, ast, lst, cpg = build_cpg("function f(a)\n\treturn a\nend")
+        fns = kg_nodes_of_type(cpg, "global_function_definition")
+        fn_id = fns[0]["_key"]
+        metrics_edges = [e for e in kg_edges_of_relation(cpg, "has_metrics") if e["_to"] == fn_id]
+        assert len(metrics_edges) == 1
+
+    def test_two_functions_both_have_definition_nodes(self):
+        code = "function add(a,b)\n\treturn a+b\nend\nfunction sub(a,b)\n\treturn a-b\nend"
+        _, ast, lst, cpg = build_cpg(code)
+        assert len(kg_nodes_of_type(cpg, "global_function_definition")) == 2
+
+    def test_function_name_in_node_properties(self):
+        _, ast, lst, cpg = build_cpg("function greet(name)\n\treturn name\nend")
+        fns = kg_nodes_of_type(cpg, "global_function_definition")
+        assert len(fns) == 1
+        assert fns[0].get("properties", {}).get("name") == "greet"
+
+    # ── Unresolved edges ──────────────────────────────────────────────────────
+
+    def test_call_to_unknown_function_creates_unresolved_edge(self):
+        _, ast, lst, cpg = build_cpg("unknown_fn(1, 2)")
+        assert "unknown_fn" in cpg.unresolved_edges
+        pending = cpg.unresolved_edges["unknown_fn"]
+        assert len(pending) >= 1
+        assert pending[0]["edge_type"] == "defines"
+
+    def test_reference_to_unknown_variable_creates_unresolved_edge(self):
+        _, ast, lst, cpg = build_cpg("x = undefined_var")
+        assert "undefined_var" in cpg.unresolved_edges
+
+    def test_known_function_call_has_no_unresolved_edge(self):
+        code = "local function f()\n\treturn 1\nend\nf()"
+        _, ast, lst, cpg = build_cpg(code)
+        assert "f" not in cpg.unresolved_edges
+
+    # ── Control flow ──────────────────────────────────────────────────────────
+
+    def test_if_statement_node_created(self):
+        _, ast, lst, cpg = build_cpg("if 1 == 1 then\n\treturn 1\nend")
+        if_stmts = kg_nodes_of_type(cpg, "if_statement")
+        assert len(if_stmts) >= 1
+        assert if_stmts[0]["properties"]["kind"] == "if_statement"
+
+    def test_if_statement_has_block(self):
+        _, ast, lst, cpg = build_cpg("if 1 == 1 then\n\treturn 1\nend")
+        ifs = kg_nodes_of_type(cpg, "if_statement")
+        if_id = ifs[0]["_key"]
+        has_block = [e for e in kg_edges_of_relation(cpg, "has_block") if e["_from"] == if_id]
+        assert len(has_block) == 1
+
+    def test_if_has_condition_edge(self):
+        _, ast, lst, cpg = build_cpg("if 1 == 1 then\n\treturn 1\nend")
+        ifs = kg_nodes_of_type(cpg, "if_statement")
+        if_id = ifs[0]["_key"]
+        cond_edges = [e for e in kg_edges_of_relation(cpg, "has_condition") if e["_from"] == if_id]
+        assert len(cond_edges) >= 1
+
+    def test_nested_if_creates_multiple_nodes(self):
+        code = """
+local x = 10
+if x > 5 then
+    if x > 8 then
+        x = 0
+    end
+end
+"""
+        _, ast, lst, cpg = build_cpg(code)
+        assert len(kg_nodes_of_type(cpg, "if_statement")) == 2
+
+    def test_if_elseif_else_all_create_nodes(self):
+        code = """
+local x = 10
+if x == 1 then
+    x = 10
+elseif x == 2 then
+    x = 20
+else
+    x = 30
+end
+"""
+        _, ast, lst, cpg = build_cpg(code)
+        assert len(kg_nodes_of_type(cpg, "if_statement")) >= 1
+        assert len(kg_nodes_of_type(cpg, "elseif_statement")) >= 1
+
+    # ── Loops ─────────────────────────────────────────────────────────────────
+
+    def test_generic_for_creates_loop_node(self):
+        code = "function copy(t)\n\tfor k, v in pairs(t) do\n\t\tt[k] = v\n\tend\nend"
+        _, ast, lst, cpg = build_cpg(code)
+        assert len(kg_nodes_of_type(cpg, "for_statement")) >= 1
+
+    def test_while_loop_creates_node(self):
+        code = "local a = 10\nwhile a > 0 do\n\ta = a - 1\nend"
+        _, ast, lst, cpg = build_cpg(code)
+        assert len(kg_nodes_of_type(cpg, "while_statement")) >= 1
+
+    def test_repeat_until_creates_node(self):
+        code = "local i = 0\nrepeat\n\ti = i + 1\nuntil i >= 10"
+        _, ast, lst, cpg = build_cpg(code)
+        assert len(kg_nodes_of_type(cpg, "repeat_statement")) >= 1
+
+    # ── Module declaration (CPG level) ────────────────────────────────────────
+
+    def test_module_declaration_creates_module_node(self):
+        _, ast, lst, cpg = build_cpg("module 'leg.parsing'")
+        mod_nodes = kg_nodes_of_type(cpg, "module")
+        assert len(mod_nodes) >= 1
+
+    def test_module_node_has_module_name_property(self):
+        _, ast, lst, cpg = build_cpg("module 'leg.parsing'")
+        mod_nodes = kg_nodes_of_type(cpg, "module")
+        assert len(mod_nodes) >= 1
+        assert mod_nodes[0].get("properties", {}).get("module_name") == "leg.parsing"
+
+    def test_module_with_functions_creates_both_nodes(self):
+        code = """
+module 'net.utils'
+function send(data)
+    return data
+end
+"""
+        _, ast, lst, cpg = build_cpg(code)
+        assert len(kg_nodes_of_type(cpg, "module")) >= 1
+        assert len(kg_nodes_of_type(cpg, "global_function_definition")) >= 1
+
+    # ── Module importing (require) ────────────────────────────────────────────
+
+    def test_require_call_function_node_type(self):
+        """require() is currently processed as a function_call knowledge node."""
+        _, ast, lst, cpg = build_cpg('local m = require("math.utils")')
+        # The require is treated as a function_call - an unresolved reference to "require"
+        assert "require" in cpg.unresolved_edges or \
+               len(kg_nodes_of_type(cpg, "function_call")) >= 1
+
+    @pytest.mark.xfail(reason="module_import nodes not yet implemented: see _cpg_declarations._node_variable step 2")
+    def test_require_creates_module_import_node(self):
+        """After implementing step 2, require() should produce a module_import node."""
+        _, ast, lst, cpg = build_cpg('local m = require("math.utils")')
+        import_nodes = kg_nodes_of_type(cpg, "module_import")
+        assert len(import_nodes) == 1
+        assert import_nodes[0].get("properties", {}).get("module_path") == "math.utils"
+
+    @pytest.mark.xfail(reason="require() should not create a function_call node once step 3 is implemented")
+    def test_require_does_not_create_function_call_node(self):
+        """After step 3, require() in _handle_call should be skipped — no function_call node."""
+        _, ast, lst, cpg = build_cpg('local m = require("math.utils")')
+        # require() call nodes should not appear in the knowledge graph
+        call_nodes = [n for n in cpg.local_builder.knowledge_nodes.values()
+                      if n.get("type") == "function_call"
+                      and n.get("properties", {}).get("name") == "require"]
+        assert len(call_nodes) == 0
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CPG: Not-yet-implemented constructs (xfail)
+# ──────────────────────────────────────────────────────────────────────────────
+
+_XFAIL_NOT_IMPLEMENTED = "not yet implemented"
 
 
-    @pytest.mark.parametrize("test_file", [
-        # (
-        #     """
-        #         local patt = P(false)
-        #
-        #         for x = 1, 19 do
-        #             print(x)
-        #         end
-        #
-        #         for i = 1, #list, 1 do
-        #             local patt = P(list[i])
-        #         end
-        #     """
-        # ),
-        # (
-        #     """
-        #     function copy(grammar)
-        #         local newt = {}
-        #
-        #         for k, v in pairs(grammar) do
-        #             newt = v
-        #         end
-        #
-        #         return newt
-        #     end"""
-        # ),
-        # (
-        #     """
-        #     a = 10
-        #
-        #     while( a < 20 )
-        #     do
-        #        print("value of a:", a)
-        #        a = a+1
-        #     end"""
-        # ),
-        (
-            """
-            i = 10
-            repeat
-               print("value of i:",i)
-               i = i + 1
-            until i > 20"""
-        )
-    ])
-    def test_loops(self, test_file):
-        file_name, ast, lst, symbol_builder, cpg_builder = build_context(test_file)
-        symbol_builder.build(ast.root_node)
-        cpg_builder.build(ast.root_node, file_name)
+class TestCPGNotYetImplemented:
 
-        bloatedmess.export_from_builder(cpg_builder.local_builder)
+    # ── Dot / field access  (t.field, t.method()) ────────────────────────────
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_dot_field_access_creates_index_expression_node(self):
+        """t.field should produce an index_expression knowledge node."""
+        _, ast, lst, cpg = build_cpg("local t = {}\nlocal x = t.field")
+        assert len(kg_nodes_of_type(cpg, "index_expression")) >= 1
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_dot_field_access_has_refers_to_edge(self):
+        """The index_expression node for t.field should have a refers_to edge back to t."""
+        _, ast, lst, cpg = build_cpg("local t = {}\nlocal x = t.field")
+        refers_edges = kg_edges_of_relation(cpg, "refers_to")
+        index_nodes = kg_nodes_of_type(cpg, "index_expression")
+        assert len(index_nodes) >= 1
+        index_ids = {n["_key"] for n in index_nodes}
+        assert any(e["_from"] in index_ids for e in refers_edges)
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_dot_field_access_property_contains_field_name(self):
+        """The index_expression node for t.field should record 'field' as the accessed key."""
+        _, ast, lst, cpg = build_cpg("local t = {}\nlocal x = t.field")
+        nodes = kg_nodes_of_type(cpg, "index_expression")
+        assert len(nodes) >= 1
+        props = nodes[0].get("properties", {})
+        assert props.get("field") == "field" or props.get("key") == "field"
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_dot_method_call_creates_index_expression_node(self):
+        """t.method() — the field access part should produce an index_expression node."""
+        _, ast, lst, cpg = build_cpg("local t = {}\nt.method()")
+        assert len(kg_nodes_of_type(cpg, "index_expression")) >= 1
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_chained_dot_access_creates_multiple_nodes(self):
+        """t.x.y involves two field accesses; at least two index_expression nodes expected."""
+        _, ast, lst, cpg = build_cpg("local a = t.x.y")
+        assert len(kg_nodes_of_type(cpg, "index_expression")) >= 2
+
+    # ── Table constructors  ({ ... }) ────────────────────────────────────────
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_table_constructor_creates_node(self):
+        """A table literal should produce a table_constructor knowledge node."""
+        _, ast, lst, cpg = build_cpg("local t = {1, 2, 3}")
+        assert len(kg_nodes_of_type(cpg, "table_constructor")) == 1
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_table_constructor_keyed_fields_create_field_nodes(self):
+        """Each key=value pair should produce a table_field node."""
+        _, ast, lst, cpg = build_cpg("local t = {a=1, b=2}")
+        assert len(kg_nodes_of_type(cpg, "table_field")) == 2
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_table_constructor_field_nodes_linked_via_ast_child(self):
+        """The table_constructor node should have ast_child edges to its table_field nodes."""
+        _, ast, lst, cpg = build_cpg("local t = {a=1}")
+        constructor_nodes = kg_nodes_of_type(cpg, "table_constructor")
+        assert len(constructor_nodes) >= 1
+        ctor_id = constructor_nodes[0]["_key"]
+        ast_child_edges = [e for e in kg_edges_of_relation(cpg, "ast_child")
+                           if e["_from"] == ctor_id]
+        assert len(ast_child_edges) >= 1
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_empty_table_constructor_creates_node(self):
+        """An empty table literal {} should still produce a table_constructor node."""
+        _, ast, lst, cpg = build_cpg("local t = {}")
+        assert len(kg_nodes_of_type(cpg, "table_constructor")) == 1
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_mixed_table_constructor_all_fields_modeled(self):
+        """Both positional and keyed entries should each produce a table_field node."""
+        _, ast, lst, cpg = build_cpg('local t = {1, key="val"}')
+        assert len(kg_nodes_of_type(cpg, "table_field")) == 2
+
+    # ── Bracket indexing  (array[i], array[i][j]) ────────────────────────────
+
+    def test_bracket_index_creates_index_expression_node(self):
+        """array[i] should produce an index_expression knowledge node."""
+        _, ast, lst, cpg = build_cpg("local t = {}\nlocal x = t[1]")
+        assert len(kg_nodes_of_type(cpg, "index_expression")) >= 1
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_bracket_index_has_refers_to_edge_to_table(self):
+        """The index_expression node for t[1] should have a refers_to edge pointing at t."""
+        _, ast, lst, cpg = build_cpg("local t = {}\nlocal x = t[1]")
+        refers_edges = kg_edges_of_relation(cpg, "refers_to")
+        index_nodes = kg_nodes_of_type(cpg, "index_expression")
+        assert len(index_nodes) >= 1
+        index_ids = {n["_key"] for n in index_nodes}
+        assert any(e["_from"] in index_ids for e in refers_edges)
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_bracket_index_with_variable_key(self):
+        """arr[key] — the index_expression node should exist; unknown 'key' goes to unresolved."""
+        _, ast, lst, cpg = build_cpg("local x = arr[key]")
+        assert len(kg_nodes_of_type(cpg, "index_expression")) >= 1
+        assert "key" in cpg.unresolved_edges or "arr" in cpg.unresolved_edges
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_chained_bracket_index_creates_multiple_nodes(self):
+        """mat[i][j] involves two bracket accesses; at least two index_expression nodes expected."""
+        _, ast, lst, cpg = build_cpg("local x = mat[i][j]")
+        assert len(kg_nodes_of_type(cpg, "index_expression")) >= 2
+
+    @pytest.mark.xfail(reason=_XFAIL_NOT_IMPLEMENTED)
+    def test_write_via_bracket_index(self):
+        """arr[1] = 42 on the LHS should still produce an index_expression node."""
+        _, ast, lst, cpg = build_cpg("arr[1] = 42")
+        assert len(kg_nodes_of_type(cpg, "index_expression")) >= 1
+
+    # ── Complex integration ───────────────────────────────────────────────────
+
+    def test_complex_function_with_control_flow(self):
+        code = """
+local function classify(n)
+    if n > 0 then
+        return "positive"
+    elseif n < 0 then
+        return "negative"
+    else
+        return "zero"
+    end
+end
+"""
+        _, ast, lst, cpg = build_cpg(code)
+        assert len(kg_nodes_of_type(cpg, "local_function_definition")) == 1
+        assert len(kg_nodes_of_type(cpg, "if_statement")) >= 1
+
+    def test_function_with_loop_and_local_vars(self):
+        code = """
+function accumulate(limit)
+    local sum = 0
+    for i = 1, limit do
+        sum = sum + i
+    end
+    return sum
+end
+"""
+        _, ast, lst, cpg = build_cpg(code)
+        assert len(kg_nodes_of_type(cpg, "global_function_definition")) == 1
+        assert len(kg_nodes_of_type(cpg, "for_statement")) >= 1
+        assert len(kg_nodes_of_type(cpg, "local_variable_declaration")) >= 1
+
+    def test_module_with_require_and_functions(self):
+        """Integration: module declaration + require import + function definitions."""
+        code = """
+local lpeg = require 'lpeg'
+
+module 'leg.grammar'
+
+function anyOf(list)
+    local patt = lpeg
+    return patt
+end
+"""
+        _, ast, lst, cpg = build_cpg(code)
+        assert len(kg_nodes_of_type(cpg, "module")) >= 1
+        assert len(kg_nodes_of_type(cpg, "global_function_definition")) >= 1
+        # lpeg should be tracked in imports
+        assert "lpeg" in lst.imports or \
+               "lpeg" in cpg.unresolved_edges  # acceptable either way before step 3

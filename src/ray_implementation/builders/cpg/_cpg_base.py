@@ -6,8 +6,8 @@ from ray_implementation.ast_utils import ASTUtils
 from ray_implementation.builders.local_output_builder import LocalOutputBuilder
 from ray_implementation.structures import SymbolTable, ContextStack
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 class CPGBase:
     """
@@ -46,9 +46,9 @@ class CPGBase:
     def _pop_scope(self):
         return self._lexical_scope_stack.pop()
 
-    def _recurse_with_different_context(self, root, file_path, context_rel_nodes, context):
+    def _recurse_with_different_context(self, root, file_path, context_rel_nodes, context, offset: int = 0):
         self._context_stack.push_context(context_rel_nodes, context)
-        for c in root.children:
+        for c in root.children[offset:]:
             self.build(c, file_path)
         self._context_stack.pop_context()
 
@@ -57,9 +57,7 @@ class CPGBase:
             found = self._astId_nodeId_map[ast_id]
         except KeyError as e:
             logger.error(
-                f"[CPGbuilder][worker_id={self._lst.worker_id}]: "
-                f"AST node({ast_id}) not found in astId->cpgId map"
-            )
+                f"[CPGbuilder][worker_id={self._lst.worker_id}]: AST node({ast_id}) not found in astId->cpgId map")
             raise e
         return found
 
@@ -68,8 +66,21 @@ class CPGBase:
             self.knowledge_nodes.insert(k_node)
             self._astId_nodeId_map[str(ast_node.id)] = k_node["_key"]
         except Exception as e:
-            return {}
-            # TODO: logging
+            logger.error(f"[CPGbuilder][worker_id={self._lst.worker_id}]: {e}")
+
+    def _create_metrics_node(self, properties, commit: bool = True) -> Dict[str, Any]:
+        node_id = f"{self.file_name}:metric:{self.gen_id()}"
+        m_node = {
+            "_key": node_id,
+            "symbol_id": None,
+            "type": "metric",
+            "text": "",
+            "file_path": "",
+            "properties": properties,
+        }
+        if commit:
+            self.knowledge_nodes.insert(m_node) # Bypassing the
+        return m_node
 
     def _create_knowledge_node(self, node, file_path: str, type: str | None = None, text: str | None = None, properties: Dict | None = None, commit: bool = True) -> Dict[str, Any]:
         """creates a knowledge node, defaulting to the AST node's properties. commit argument decides wheteher to automatically insert the knowledge node to the graph collection"""
@@ -113,3 +124,23 @@ class CPGBase:
 
     def _update_knowledge_node(self, node):
         self.knowledge_nodes.insert(node)
+
+    # ------------------------------------------------------------------
+    # Metric creation
+    # ------------------------------------------------------------------
+
+    def _handle_metrics(self, ast_node, k_node, *functions):
+        k_id = k_node["_key"]
+        # find if the node already doesn't have a metrics node
+
+        # adds the result from metrics functions into the metric node
+        m_properties = {}
+        for f in functions:
+            name, result = f()
+            m_properties[name] = result
+
+        m_node = self._create_metrics_node(m_properties)
+
+        # create an edge
+        self._create_knowledge_edge(m_node["_key"], k_id, "has_metrics")
+

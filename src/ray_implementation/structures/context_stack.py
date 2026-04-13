@@ -3,7 +3,7 @@ Data structure keeping track of a scope while parsing AST to a graph
 """
 from typing import List, Optional
 
-from .util_enums import Context
+from ray_implementation.dto.context import Context
 
 
 class ContextStack:
@@ -22,7 +22,9 @@ class ContextStack:
         return False
 
     def push_context(self, ids, context: Context):
-        """Push the context from the Context enum onto the stack"""
+        """Push the context from the Context enum onto the stack
+        :param ids: the ids of the context
+        :param context: the context to be pushed"""
         self.context_stack.append(context)
         self.context_relevant_node_ids.append(ids)
 

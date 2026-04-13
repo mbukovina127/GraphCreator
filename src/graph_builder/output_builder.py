@@ -392,7 +392,7 @@ class CollectionProxy:
         
         self._storage[key] = doc.copy()
         
-        # Index by path if present
+        # Index by path if present #TODO possibly useless for my case
         if "path" in doc:
             self._path_index[doc["path"]] = key
         
