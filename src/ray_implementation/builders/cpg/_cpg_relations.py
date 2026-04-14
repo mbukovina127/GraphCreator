@@ -1,13 +1,10 @@
-import ast
 import logging
 from typing import Any, Dict, Tuple
-from types import SimpleNamespace
 
 from code_analyzer import ast_metrics
 from ray_implementation.ast_utils import ASTUtils
 from ray_implementation.structures import Context
 from ._cpg_base import CPGBase, logger
-
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,7 +24,7 @@ class CPGRelationsMixin(CPGBase):
             'else_statement':               self._handle_control_statement,
             'elseif_statement':             self._handle_control_statement,
             'block':                        self._handle_block,
-            'exp_list':                     self._handle_expression_container,
+            'expression_list':              self._handle_expression_container,
             'binary_expression':            self._handle_expression_container,
             'return_statement':             self._handle_return,
             # loops
@@ -138,9 +135,6 @@ class CPGRelationsMixin(CPGBase):
         return k_node, False
 
     def _handle_assignment(self, node, file_path: str) -> Tuple[Dict | None, bool]:
-        if self._context_stack.peek_context() == Context.VAR_DECL:
-            return None, False
-
         # Lefthand side
         k_node = None
         var_list = ASTUtils.first_node_of_type(node, "variable_list")

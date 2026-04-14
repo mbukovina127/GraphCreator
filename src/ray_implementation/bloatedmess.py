@@ -1,6 +1,8 @@
 import csv
 from typing import List, Dict, Any
 
+from ray_implementation import CPGBuilder
+
 
 def _strip_collection(handle: str) -> str:
     """
@@ -106,6 +108,8 @@ def export_to_gephi_csv(
             writer.writerow(row)
 
 def export_from_builder(builder):
+    if isinstance(builder, CPGBuilder):
+        builder = builder.local_builder
     nodes = builder.knowledge_nodes.values()
     edges = builder.knowledge_edges
     export_to_gephi_csv(nodes, edges, "k_nodes.csv", "k_edges.csv")

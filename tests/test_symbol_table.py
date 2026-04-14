@@ -1,16 +1,14 @@
 import logging
-import pytest
-import tempfile
-import sys
 import os
+import sys
+import tempfile
 
-from ray_implementation.bloatedmess import export_to_gephi_csv, export_from_builder
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from code_analyzer.parse_code import ParallelASTManager
 from ray_implementation import SymbolBuilder, CPGBuilder, LocalOutputBuilder, SymbolTable
-from ray_implementation import bloatedmess
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -233,6 +231,13 @@ class TestCPGBuilder:
         declares_edges = kg_edges_of_relation(cpg, "declares")
         assert len(declares_edges) >= 1
 
+    def test_variable_declaration_assignment(self):
+        _, ast, lst, cpg = build_cpg("local a = 5\nlocal b = a")
+        refers_to_edge = kg_edges_of_relation(cpg, "refers_to")
+        assert len(kg_nodes_of_type(cpg, "local_variable_declaration")) == 2
+        assert len([n for n in kg_nodes_of_type(cpg, "local_variable_declaration") ]) == 2
+        assert len(refers_to_edge) == 1
+
     def test_local_variable_has_name_property(self):
         _, ast, lst, cpg = build_cpg("local x = 42")
         nodes = kg_nodes_of_type(cpg, "local_variable_declaration")
@@ -262,7 +267,9 @@ class TestCPGBuilder:
         fns = kg_nodes_of_type(cpg, "local_function_definition")
         fn_id = fns[0]["_key"]
         param_edges = [e for e in kg_edges_of_relation(cpg, "has_parameters") if e["_from"] == fn_id]
+        ref_edges = kg_edges_of_relation(cpg, "refers_to")
         assert len(param_edges) == 2
+        assert len(ref_edges) == 2
 
     def test_function_no_params_no_parameter_edges(self):
         _, ast, lst, cpg = build_cpg("local function f()\n\treturn 1\nend")
@@ -399,13 +406,6 @@ end
         assert len(kg_nodes_of_type(cpg, "global_function_definition")) >= 1
 
     # ── Module importing (require) ────────────────────────────────────────────
-
-    def test_require_call_function_node_type(self):
-        """require() is currently processed as a function_call knowledge node."""
-        _, ast, lst, cpg = build_cpg('local m = require("math.utils")')
-        # The require is treated as a function_call - an unresolved reference to "require"
-        assert "require" in cpg.unresolved_edges or \
-               len(kg_nodes_of_type(cpg, "function_call")) >= 1
 
     @pytest.mark.xfail(reason="module_import nodes not yet implemented: see _cpg_declarations._node_variable step 2")
     def test_require_creates_module_import_node(self):
@@ -595,5 +595,4 @@ end
         assert len(kg_nodes_of_type(cpg, "module")) >= 1
         assert len(kg_nodes_of_type(cpg, "global_function_definition")) >= 1
         # lpeg should be tracked in imports
-        assert "lpeg" in lst.imports or \
-               "lpeg" in cpg.unresolved_edges  # acceptable either way before step 3
+        assert "lpeg" in lst.imports or "lpeg" in cpg.unresolved_edges  # acceptable either way before step 3

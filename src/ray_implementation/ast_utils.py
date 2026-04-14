@@ -1,8 +1,10 @@
 """
 Functions for AST utilities like node type checking and tree traversal
 """
-from typing import Any, Optional
+from typing import Optional
+
 from tree_sitter import Node
+
 
 class ASTUtils:
     """
@@ -83,58 +85,3 @@ class ASTUtils:
             "chunk",
             "block",
         ]
-   
-    @staticmethod
-    def is_knowledge_node(node) -> bool:
-        """
-        Determine if the AST node should be represented as a knowledge node
-        """
-        return node.type in [
-            "function_declaration",
-            "variable_declaration",
-            "assignment_statement",
-            "block",
-            "chunk",
-        ]
-    
-    @staticmethod
-    def is_declaration_node(node: Node) -> Optional[str]:
-        """
-        Check if the AST node is a declaration node
-        """
-        map = {
-            "function_declaration": 'function_declaration',
-            "variable_declaration": 'variable_declaration',
-            "assignment_statement": 'possible_variable',
-            "block": 'block',
-            "chunk": 'chunk',
-            "function_call": 'module', # case for module definitions
-            "for_statement": 'for_statement',
-        }
-        
-        return map.get(node.type)
-    
-    @staticmethod
-    def is_relation_node(node) -> Optional[str]:
-        """
-        Check if the AST node is a reference node
-        """
-        map = {
-            "identifier": 'ident',
-            "function_call": 'call',
-            "expression_list": 'exp_list',
-            "binary_expression": 'binary_expression',
-            "if_statement": 'if_statement',
-            "assignment_statement": 'assign',
-            "block": 'block',
-            "return_statement": 'return',
-        }
-        _is = map.get(node.type)
-        if _is is None:
-            return None
-        # possible place to further contextualize the node
-        return map.get(node.type)
-
-    @staticmethod
-    def what_is_this_edge(self, ast_node):
-        pass
