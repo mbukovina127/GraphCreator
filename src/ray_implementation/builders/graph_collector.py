@@ -5,6 +5,7 @@ from typing import Dict, List, Any, Optional
 
 from ray_implementation.structures import SymbolTable
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -123,12 +124,20 @@ class GraphCollector(GraphCollectorBase):
         self._export_index: Dict[str, Dict[str, str]] = {} # "module" -> "function" -> function id
 
     def collect(self, results, root_directory: str):
+        logger.info("Starting graph collection for root_directory=%s", root_directory)
         self._collect_local_results(results)
         self._create_spine(root_directory)
         self._create_indexes()
         self._resolve_cross_file_edges()
+        logger.info(
+            "Graph collection complete: %d ast_nodes, %d ast_edges, %d kg_nodes, %d kg_edges",
+            len(self._ast_nodes), len(self._ast_edges),
+            len(self._knowledge_nodes), len(self._knowledge_edges),
+        )
 
     def _create_indexes(self):
+        logger.info("Building indexes from %d knowledge nodes and %d edges",
+                    len(self._knowledge_nodes), len(self._knowledge_edges))
         for node in self._knowledge_nodes.values():
             match node["type"]:
                 case "module":
@@ -151,12 +160,17 @@ class GraphCollector(GraphCollectorBase):
                     if module_name and declaration_name:
                         self._export_index.setdefault(module_name, {})[declaration_name] = edge["_to"]
 
+        logger.info("Indexes built: %d modules, %d chunks, %d export entries",
+                    len(self._module_index), len(self._chunk_index),
+                    sum(len(v) for v in self._export_index.values()))
+
     def _resolve_cross_file_edges(self):
         """
         For every file's unresolved edges, attempt to resolve them against:
           1. Known modules (require() imports)
           2. Global symbol definitions in other files
         """
+        logger.info("Resolving cross-file edges for %d files", len(self.results))
         for file_path, result in self.results.items():
             # imports: Dict[str, str]  — var_name -> module_path, e.g. {"m": "math.utils"}
             # Exported directly as a flat key by GraphManager.get_graphs().
@@ -170,10 +184,12 @@ class GraphCollector(GraphCollectorBase):
             for var_name, module_path in imports.items():
                 module_node_id = self._module_index.get(module_path)
                 if module_node_id is None:
-                    continue  # module not found in any processed file
+                    logger.error("Unresolved import: module '%s' not found (referenced in %s)", module_path, file_path)
+                    continue
 
                 var_node_id = self._find_declaration_node(file_path, var_name)
                 if var_node_id is None:
+                    logger.error("Unresolved import: declaration node for '%s' not found in %s", var_name, file_path)
                     continue
 
                 self._add_knowledge_edge(self._create_knowledge_edge(
@@ -187,6 +203,8 @@ class GraphCollector(GraphCollectorBase):
                 for pending in pending_edges:
                     resolved_id = self._resolve_symbol(symbol_name, file_path, imports)
                     if resolved_id is None:
+                        logger.error("Unresolved symbol '%s' in %s (edge_type=%s)",
+                                     symbol_name, file_path, pending.get("edge_type"))
                         continue
                     self._add_knowledge_edge(self._create_knowledge_edge(
                         from_node_id=pending["node_id"],
@@ -222,6 +240,7 @@ class GraphCollector(GraphCollectorBase):
         return None
 
     def _create_spine(self, root_directory: str):
+        logger.info("Building file-system spine from %s", root_directory)
         #project root directory
         def traverse(current_path: str, parent_ast_id: str = None, parent_kg_id: str = None):
             name = os.path.basename(current_path) or current_path
@@ -285,10 +304,15 @@ class GraphCollector(GraphCollectorBase):
     def _store_local_graph(self, parent_ast, parent_kg, file_path):
             result = self.results.get(file_path, {})
             if not result:
-                logger.warning(f"File_path={file_path} not found in results")
+                logger.warning("File_path=%s not found in results", file_path)
+                return
 
-            kg_chunk_node = result['knowledge_graph']['vertices'][0]
-            ast_chunk_node = result['ast_graph']['vertices'][0]
+            try:
+                kg_chunk_node = result['knowledge_graph']['vertices'][0]
+                ast_chunk_node = result['ast_graph']['vertices'][0]
+            except (KeyError, IndexError) as exc:
+                logger.error("Malformed result for %s: %s", file_path, exc)
+                return
 
             self._add_ast_edge(self._create_ast_edge(parent_ast, ast_chunk_node['_key'], "is"))
             self._add_knowledge_edge(self._create_knowledge_edge(parent_kg, kg_chunk_node['_key'], "is"))
@@ -305,6 +329,7 @@ class GraphCollector(GraphCollectorBase):
     def _collect_local_results(self, results: List[Dict[str, Any]]):
         """Collects the results from ray results and stores them in memory"""
         #TODO create a check for result JSON schema
+        logger.info("Collecting results for %d files", len(results))
         for result in results:
             self.results[result["file"]] = result
 

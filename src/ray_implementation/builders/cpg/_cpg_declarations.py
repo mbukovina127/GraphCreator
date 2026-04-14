@@ -1,13 +1,10 @@
 import logging
 from typing import Any, Dict
 
-from websockets.version import commit
-
+from code_analyzer import ast_metrics
 from ray_implementation.ast_utils import ASTUtils
 from ray_implementation.structures import Context
 from ._cpg_relations import CPGRelationsMixin
-from code_analyzer import ast_metrics
-
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,13 +46,15 @@ class CPGDeclarationsMixin(CPGRelationsMixin):
     def _init_declaration_handlers(self):
         self._declaration_handlers = {
             "variable_declaration": self._node_variable,
-            "possible_variable": self._node_variable,
+            "assignment_statement": self._node_variable,  # assignment_statement = possible variable declaration
             "function_declaration": self._node_function,
-            "chunk": self._node_chunk,
-            "module": self._node_module,
+            "chunk":                self._node_chunk,
+            "function_call":        self._node_module,    # function_call = possible module definition
         }
 
     def _node_variable(self, node, file_path):
+        if self._context_stack == Context.VAR_DECL:
+            return False
         var = ASTUtils.first_node_of_type(node, "variable_list")
         identifiers = ASTUtils.nodes_of_type(var, "identifier")
 
@@ -64,7 +63,7 @@ class CPGDeclarationsMixin(CPGRelationsMixin):
             k_properties = {
                 "name": name
             }
-
+            assignment = None
             if k_type == "local_variable_declaration":
                 assignment = ASTUtils.first_node_of_type(root, "assignment_statement")
                 if assignment is not None:
@@ -73,7 +72,10 @@ class CPGDeclarationsMixin(CPGRelationsMixin):
             k_node = self._create_knowledge_node(root, file_path, k_type, properties=k_properties)
 
             self._apply_environment_edge(k_node)
-            self._recurse_with_different_context(root, file_path, k_node["_key"], Context.VAR_DECL)
+
+            # process only the expression list skipping the assignment Force None error as
+            if assignment is not None:
+                self._recurse_with_different_context(assignment, file_path, k_node["_key"], Context.VAR_DECL) #
             return True
 
         handled = False
@@ -168,10 +170,7 @@ class CPGDeclarationsMixin(CPGRelationsMixin):
         Creates nodes that correspond to declarations in the symbol table.
         Returns True if the node was handled (children already walked).
         """
-        k_type = ASTUtils.is_declaration_node(node)
-        if k_type is None:
-            return False
-        handler = self._declaration_handlers.get(k_type)
+        handler = self._declaration_handlers.get(node.type)
         if handler is None:
             return False
         logger.info(f"\tEntering handler for declaration {handler.__name__}")

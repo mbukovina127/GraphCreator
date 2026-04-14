@@ -1,6 +1,6 @@
-import tempfile
-import sys
 import os
+import sys
+import tempfile
 import zipfile
 
 import pytest
@@ -458,6 +458,9 @@ def test_graph_collector_cross_file_module_resolved(module_zip):
     """
     gc, _ = _extract_and_collect(module_zip)
     import_edges = [e for e in gc._knowledge_edges if e.get("relation") == "imports"]
+    nodes = gc._knowledge_nodes.values()
+    edges = gc._knowledge_edges
+    export_to_gephi_csv(nodes, edges, "k_nodes.csv", "k_edges.csv")
     assert len(import_edges) >= 1, (
         "Expected at least one 'imports' edge after cross-file resolution"
     )
