@@ -7,7 +7,7 @@ import pytest
 import ray
 
 from file_system_analyzer import analyze_project_structure
-from ray_implementation.bloatedmess import export_to_gephi_csv
+from ray_implementation.csv_graph_exporter import export_to_gephi_csv
 from ray_implementation.builders.graph_collector import GraphCollector
 from ray_implementation.managers.ray_orchestrator import RayOrchestrator
 

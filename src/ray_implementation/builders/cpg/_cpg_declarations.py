@@ -3,6 +3,7 @@ from typing import Any, Dict
 
 from code_analyzer import ast_metrics
 from ray_implementation.ast_utils import ASTUtils
+from ray_implementation.dto.edges import Edges
 from ray_implementation.structures import Context
 from ._cpg_relations import CPGRelationsMixin
 
@@ -17,12 +18,12 @@ class CPGDeclarationsMixin(CPGRelationsMixin):
     def _apply_environment_edge(self, k_node: Dict[str, Any] | None):
         """Wires a declaration node to either its lexical scope or the global environment."""
         edge_type = {
-            "local_function_definition":  ("defines",  True),
-            "global_function_definition": ("defines",  False),
-            "local_variable_declaration": ("declares", True),
-            "global_variable_declaration":("declares", False),
-            "module":                     ("defines",  True),
-            "module_import":              ("imports", True),
+            "local_function_definition":  (Edges.DEFINES,  True),
+            "global_function_definition": (Edges.DEFINES,  False),
+            "local_variable_declaration": (Edges.DECLARES, True),
+            "global_variable_declaration":(Edges.DECLARES, False),
+            "module":                     (Edges.DEFINES,  True),
+            "module_import":              (Edges.IMPORTS,  True),
         }.get(k_node["type"])
 
         if edge_type is None:
@@ -38,7 +39,7 @@ class CPGDeclarationsMixin(CPGRelationsMixin):
                 self._create_knowledge_edge(
                     self._astId_nodeId_map[str(self._lexical_scope_stack[-1])],
                     k_node["_key"],
-                    "contains",  # TODO: confirm convention
+                    Edges.CONTAINS,
                 )
             else:
                 self._create_knowledge_edge(self._environment, k_node["_key"], relation)
@@ -68,6 +69,8 @@ class CPGDeclarationsMixin(CPGRelationsMixin):
                 assignment = ASTUtils.first_node_of_type(root, "assignment_statement")
                 if assignment is not None:
                     k_properties["initialized"] = "True"
+                    if ASTUtils.first_node_of_type(assignment, "table_constructor") is not None:
+                        k_properties["is_table"] = "True"
 
             k_node = self._create_knowledge_node(root, file_path, k_type, properties=k_properties)
 

@@ -15,3 +15,4 @@ class Context(Enum):
     CONTROL_STATEMENT = auto()
     LOOP = auto()
     FOR_CLAUSE = auto()
+    TABLE_CONSTRUCTOR = auto()
