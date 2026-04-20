@@ -4,6 +4,7 @@ from typing import Any, Dict, List
 
 from ray_implementation.ast_utils import ASTUtils
 from ray_implementation.builders.local_output_builder import LocalOutputBuilder
+from ray_implementation.dto.edges import Edges
 from ray_implementation.structures import SymbolTable, ContextStack
 
 logging.basicConfig(level=logging.INFO)
@@ -103,20 +104,20 @@ class CPGBase:
     def _insert_knowledge_node(self, ast_node, k_node):
         return self.__insert_knowledge_node(ast_node, k_node)
 
-    def _create_knowledge_edge(self, from_node_id: str, to_node_id: str, edge_type: str) -> Dict[str, Any]:
+    def _create_knowledge_edge(self, from_node_id: str, to_node_id: str, edge_type: Edges) -> Dict[str, Any]:
         edge = {
             "_from": from_node_id,
             "_to": to_node_id,
-            "relation": edge_type,
+            "relation": edge_type.value,
         }
         self.knowledge_edges.insert(edge)
         return edge
 
-    def _create_unresolved_edge(self, node_id: str, symbol_name: str, edge_type: str, scope: str, file: str) -> None:
+    def _create_unresolved_edge(self, node_id: str, symbol_name: str, edge_type: Edges, scope: str, file: str) -> None:
         unk_edge = {
             "node_id": node_id,
             "symbol_name": symbol_name,
-            "edge_type": edge_type,
+            "edge_type": edge_type.value,
             "scope": scope,
             "file": file,
         }
@@ -142,5 +143,5 @@ class CPGBase:
         m_node = self._create_metrics_node(m_properties)
 
         # create an edge
-        self._create_knowledge_edge(m_node["_key"], k_id, "has_metrics")
+        self._create_knowledge_edge(m_node["_key"], k_id, Edges.HAS_METRICS)
 

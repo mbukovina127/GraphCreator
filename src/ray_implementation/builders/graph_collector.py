@@ -3,6 +3,7 @@ import logging
 import os
 from typing import Dict, List, Any, Optional
 
+from ray_implementation.dto.edges import Edges
 from ray_implementation.structures import SymbolTable
 
 logging.basicConfig(level=logging.INFO)
@@ -99,16 +100,14 @@ class GraphCollectorBase:
 
     def _create_knowledge_edge(
             self,
-            # edge_id: str,
             from_node_id: str,
             to_node_id: str,
-            edge_type: str
+            edge_type: Edges,
     ) -> Dict[str, Any]:
         return {
-            # "_key": edge_id,
             "_from": from_node_id,
             "_to": to_node_id,
-            "relation": edge_type,
+            "relation": edge_type.value,
         }
 
 class GraphCollector(GraphCollectorBase):
@@ -150,7 +149,7 @@ class GraphCollector(GraphCollectorBase):
 
         # build export index: module_name -> { declaration_name -> node_id }
         for edge in self._knowledge_edges:
-            if edge["relation"] in ("declares", "defines"):
+            if edge["relation"] in (Edges.DECLARES.value, Edges.DEFINES.value):
                 module_node = self._knowledge_nodes.get(edge["_from"])
                 declaration_node = self._knowledge_nodes.get(edge["_to"])
                 if module_node and declaration_node:
@@ -195,7 +194,7 @@ class GraphCollector(GraphCollectorBase):
                 self._add_knowledge_edge(self._create_knowledge_edge(
                     from_node_id=var_node_id,
                     to_node_id=module_node_id,
-                    edge_type="imports"
+                    edge_type=Edges.IMPORTS,
                 ))
 
             # --- Step 2: resolve unresolved reference edges ---
@@ -209,7 +208,7 @@ class GraphCollector(GraphCollectorBase):
                     self._add_knowledge_edge(self._create_knowledge_edge(
                         from_node_id=pending["node_id"],
                         to_node_id=resolved_id,
-                        edge_type=pending["edge_type"]
+                        edge_type=Edges(pending["edge_type"]),
                     ))
 
     def _resolve_symbol(self, symbol_name: str, requesting_file: str, imports: Dict[str, str]) -> Optional[str]:
@@ -276,10 +275,9 @@ class GraphCollector(GraphCollectorBase):
             if parent_kg_id:
                 self._add_knowledge_edge(
                     self._create_knowledge_edge(
-                        # edge_id=str(self.gen_next_knowledge_id()),
                         from_node_id=parent_kg_id,
                         to_node_id=kg_id,
-                        edge_type="contains"
+                        edge_type=Edges.CONTAINS,
                     )
                 )
             if parent_ast_id:
@@ -315,7 +313,7 @@ class GraphCollector(GraphCollectorBase):
                 return
 
             self._add_ast_edge(self._create_ast_edge(parent_ast, ast_chunk_node['_key'], "is"))
-            self._add_knowledge_edge(self._create_knowledge_edge(parent_kg, kg_chunk_node['_key'], "is"))
+            self._add_knowledge_edge(self._create_knowledge_edge(parent_kg, kg_chunk_node['_key'], Edges.IS))
 
             #adding the nodes to the global graph
             self._add_ast_nodes(result['ast_graph']['vertices'])

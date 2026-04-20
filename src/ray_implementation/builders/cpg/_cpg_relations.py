@@ -3,6 +3,7 @@ from typing import Any, Dict, Tuple
 
 from code_analyzer import ast_metrics
 from ray_implementation.ast_utils import ASTUtils
+from ray_implementation.dto.edges import Edges
 from ray_implementation.structures import Context
 from ._cpg_base import CPGBase, logger
 
@@ -35,6 +36,16 @@ class CPGRelationsMixin(CPGBase):
             'for_generic_clause':           self._handle_for_clause,
             # indexing
             'bracket_index_expression':     self._handle_bracket_index_expression,
+            'dot_index_expression':         self._handle_dot_index_expression,
+            # table constructors
+            'table_constructor':            self._handle_table_constructor,
+            'field':                        self._handle_field,
+            # literals
+            'number':                       self._handle_literal,
+            'string':                       self._handle_literal,
+            'true':                         self._handle_literal,
+            'false':                        self._handle_literal,
+            'nil':                          self._handle_literal,
         }
 
     # ------------------------------------------------------------------
@@ -50,59 +61,62 @@ class CPGRelationsMixin(CPGBase):
         logger.info(f"Applying context edge to node {k_node['_key']} in context of {context}")
         match context:
             case Context.ARGUMENTS:
-                self._create_knowledge_edge(relevant_id, k_node["_key"], "has_argument")
+                self._create_knowledge_edge(relevant_id, k_node["_key"], Edges.HAS_ARGUMENT)
 
             case Context.VAR_DECL:
-                self._create_knowledge_edge(k_node["_key"], relevant_id, "initializes")
+                self._create_knowledge_edge(k_node["_key"], relevant_id, Edges.INITIALIZES)
 
             case Context.EXPRESSION:
-                self._create_knowledge_edge(k_node["_key"], relevant_id, "inside_of")
+                self._create_knowledge_edge(k_node["_key"], relevant_id, Edges.INSIDE_OF)
 
             case Context.ASSIGNMENT:
-                self._create_knowledge_edge(k_node["_key"], relevant_id, "assigns_to")
+                self._create_knowledge_edge(k_node["_key"], relevant_id, Edges.ASSIGNS_TO)
 
             case Context.CONTROL_STATEMENT:
                 relation = {
-                    "block": None, # blocks already create edges
-                    "binary_expression": "has_condition",
-                    "exp_list": "has_condition",
-                }.get(k_node["type"], "flows_to")
+                    "block": None,  # blocks already create edges
+                    "binary_expression": Edges.HAS_CONDITION,
+                    "exp_list": Edges.HAS_CONDITION,
+                }.get(k_node["type"], Edges.FLOWS_TO)
                 if relation is not None:
                     self._create_knowledge_edge(relevant_id, k_node["_key"], relation)
 
             case Context.LOOP:
                 loop_relation = {
                     'block': None,
-                    'for_generic_clause': 'has_condition',
-                    'for_numeric_clause': 'has_condition',
-                    'binary_expression': 'has_condition',
-                }.get(k_node["type"], "UNKNOWN")
+                    'for_generic_clause': Edges.HAS_CONDITION,
+                    'for_numeric_clause': Edges.HAS_CONDITION,
+                    'binary_expression': Edges.HAS_CONDITION,
+                }.get(k_node["type"], Edges.FLOWS_TO)
                 if loop_relation is not None:
                     self._create_knowledge_edge(relevant_id, k_node["_key"], loop_relation)
 
             case Context.RETURN:
-                ids = self._context_stack.get_context()[1]
-                ids = ids.split("$")  # FIXME: replace with tuple
-                self._create_knowledge_edge(ids[0], k_node["_key"], "returns")
-                self._create_knowledge_edge(ids[1], k_node["_key"], "contains")
+                return_node_id = self._context_stack.get_context()[1]
+                fun_id = self._context_stack.find_in_wider_context([Context.FUN_DECL])
+                self._create_knowledge_edge(fun_id, k_node["_key"], Edges.RETURNS)
+                self._create_knowledge_edge(return_node_id, k_node["_key"], Edges.CONTAINS)
 
             case Context.PARAMETERS:
-                self._create_knowledge_edge(relevant_id, k_node["_key"], "has_parameters")
+                self._create_knowledge_edge(relevant_id, k_node["_key"], Edges.HAS_PARAMETERS)
+
+            case Context.TABLE_CONSTRUCTOR:
+                self._create_knowledge_edge(relevant_id, k_node["_key"], Edges.HAS_FIELD)
 
             case Context.BLOCK:
                 block_relation = {
-                    "variable_declaration": "declares",
-                    "if_statement":         "executes",
-                    "function_call":        "calls",
-                }.get(k_node["type"], "flows_to")
+                    "variable_declaration": Edges.DECLARES,
+                    "if_statement":         Edges.EXECUTES,
+                    "function_call":        Edges.CALLS,
+                }.get(k_node["type"], Edges.FLOWS_TO)
                 self._create_knowledge_edge(relevant_id, k_node["_key"], block_relation)
 
             case Context.CHUNK:
                 chunk_relation = {
-                    "for_statement": "executes",
-                    "if_statement": "executes",
-                    "repeat_statement": "executes",
-                    "while_statement": "executes",
+                    "for_statement":   Edges.EXECUTES,
+                    "if_statement":    Edges.EXECUTES,
+                    "repeat_statement": Edges.EXECUTES,
+                    "while_statement": Edges.EXECUTES,
                 }.get(k_node["type"])
                 if chunk_relation is not None:
                     self._create_knowledge_edge(relevant_id, k_node["_key"], chunk_relation)
@@ -118,16 +132,16 @@ class CPGRelationsMixin(CPGBase):
         k_node = self._create_knowledge_node(node, file_path,properties={"name": name})
         symbol = self._lst.scope_lookup_by_name(self._lexical_scope_stack[-1], name)
         if symbol is None:
-            self._create_unresolved_edge(k_node["_key"], name, "refers_to", self._lexical_scope_stack[-1], file_path)
+            self._create_unresolved_edge(k_node["_key"], name, Edges.REFERS_TO, self._lexical_scope_stack[-1], file_path)
             logger.info(f"Created unresolved edge[{k_node['_key']}, {name}]")
         else:
             try:
                 found_node_id = self._get_nodeid_from_astid(str(symbol.ast_id))
                 if symbol.kind in ["module_representation", "local_module_representation"]:
-                    self._create_knowledge_edge(k_node["_key"], found_node_id, "refers_to")
+                    self._create_knowledge_edge(k_node["_key"], found_node_id, Edges.REFERS_TO)
                     #TODO do something with module importing
                 else:
-                    self._create_knowledge_edge(k_node["_key"], found_node_id, "refers_to")
+                    self._create_knowledge_edge(k_node["_key"], found_node_id, Edges.REFERS_TO)
 
             except KeyError:
                 logger.error(f"Symbol {symbol} not found in created knowledge nodes")
@@ -147,11 +161,11 @@ class CPGRelationsMixin(CPGBase):
                 if symbol is not None:
                     try:
                         found_node_id = self._get_nodeid_from_astid(str(symbol.ast_id))
-                        self._create_knowledge_edge(k_node["_key"], found_node_id, "refers_to")
+                        self._create_knowledge_edge(k_node["_key"], found_node_id, Edges.REFERS_TO)
                     except KeyError:
                         logger.error(f"Symbol {symbol} not found in created knowledge nodes")
                 else:
-                    self._create_unresolved_edge(k_node["_key"], name, "refers_to", self._lexical_scope_stack[-1], file_path)
+                    self._create_unresolved_edge(k_node["_key"], name, Edges.REFERS_TO, self._lexical_scope_stack[-1], file_path)
                     logger.info(f"Created unresolved edge[ {k_node['_key']}, {name}]")
 
         #Righthand side
@@ -166,17 +180,17 @@ class CPGRelationsMixin(CPGBase):
 
     def _handle_call(self, node, file_path: str) -> Tuple[Dict | None, bool]:
         name = ASTUtils.get_text(ASTUtils.first_node_of_type(node, "identifier"))
-        k_node = self._create_knowledge_node(node, file_path, properties={"name": name})
-
         if name == 'require':
             return None, True # Symbol already has the import skip the traversion; FIXME to be deleted
+
+        k_node = self._create_knowledge_node(node, file_path, properties={"name": name})
 
         definition = self._lst.scope_lookup_by_name(self._lexical_scope_stack[-1], name)
         if definition is not None:
             found_node_id = self._get_nodeid_from_astid(str(definition.ast_id))
-            self._create_knowledge_edge(found_node_id, k_node["_key"], "defines")
+            self._create_knowledge_edge(found_node_id, k_node["_key"], Edges.DEFINES)
         else:
-            self._create_unresolved_edge(k_node["_key"], name, "defines", self._lexical_scope_stack[-1], file_path)
+            self._create_unresolved_edge(k_node["_key"], name, Edges.DEFINES, self._lexical_scope_stack[-1], file_path)
             logger.info(f"Created unresolved edge[ {k_node['_key']}, {name}]")
 
         recursive = False
@@ -202,7 +216,7 @@ class CPGRelationsMixin(CPGBase):
         k_node = self._create_knowledge_node(node, file_path)
         con, con_id = self._context_stack.get_context()
         if con in [Context.FUN_DECL, Context.CONTROL_STATEMENT, Context.LOOP]:
-            self._create_knowledge_edge(con_id, k_node["_key"], "has_block")
+            self._create_knowledge_edge(con_id, k_node["_key"], Edges.HAS_BLOCK)
             self._recurse_with_different_context(node, file_path, k_node["_key"], Context.BLOCK)
             return k_node, True
         return k_node, False
@@ -216,11 +230,8 @@ class CPGRelationsMixin(CPGBase):
 
     def _handle_return(self, node, file_path: str) -> Tuple[Dict | None, bool]:
         k_node = self._create_knowledge_node(node, file_path)
-        if (self._context_stack.peek_context() == Context.BLOCK
-                and self._context_stack.peek_context(-2) == Context.FUN_DECL):
-            # FIXME HORRIBLE TERRIBLE PLEASE FIX — use tuple instead of "$"
-            fun_id = self._context_stack.get_context(-2)[1]
-            self._recurse_with_different_context(node, file_path, fun_id + "$" + k_node["_key"], Context.RETURN)
+        if self._context_stack.find_in_wider_context([Context.FUN_DECL]) is not None:
+            self._recurse_with_different_context(node, file_path, k_node["_key"], Context.RETURN)
             return k_node, True
         return k_node, False
 
@@ -242,17 +253,72 @@ class CPGRelationsMixin(CPGBase):
         if symbol is not None:
             try:
                 found_node_id = self._get_nodeid_from_astid(str(symbol.ast_id))
-                self._create_knowledge_edge(k_node["_key"], found_node_id, "refers_to")
+                self._create_knowledge_edge(k_node["_key"], found_node_id, Edges.REFERS_TO)
             except KeyError:
                 logger.error(f"Symbol '{name}' not found in created knowledge nodes")
         else:
-            self._create_unresolved_edge(k_node["_key"], name, "refers_to",
+            self._create_unresolved_edge(k_node["_key"], name, Edges.REFERS_TO,
                                          self._lexical_scope_stack[-1], file_path)
             logger.info(f"Created unresolved edge [{k_node['_key']}, {name}]")
 
         self._recurse_with_different_context(node, file_path, k_node["_key"], Context.EXPRESSION, 1)
 
         return k_node, True
+
+    def _handle_dot_index_expression(self, node, file_path: str) -> Tuple[Dict | None, bool]:
+        """
+        dot_index_expression → base_expr '.' field_name
+        """
+        base = node.children[0]
+        field_name = ASTUtils.get_text(node.children[2])
+
+        if base.type == "identifier":
+            base_name = ASTUtils.get_text(base)
+        else:
+            ident = ASTUtils.first_node_of_type(base, "identifier")
+            base_name = ASTUtils.get_text(ident) if ident is not None else ""
+
+        k_node = self._create_knowledge_node(node, file_path, type="index_expression", properties={"name": base_name, "field": field_name})
+
+        symbol = self._lst.scope_lookup_by_name(self._lexical_scope_stack[-1], base_name)
+        if symbol is not None:
+            try:
+                found_node_id = self._get_nodeid_from_astid(str(symbol.ast_id))
+                self._create_knowledge_edge(k_node["_key"], found_node_id, Edges.REFERS_TO)
+            except KeyError:
+                logger.error(f"Symbol '{base_name}' not found in created knowledge nodes")
+        else:
+            self._create_unresolved_edge(k_node["_key"], base_name, Edges.REFERS_TO, self._lexical_scope_stack[-1], file_path)
+            logger.info(f"Created unresolved edge [{k_node['_key']}, {base_name}]")
+
+        if base.type == "dot_index_expression":
+            self.build(base, file_path)
+
+        return k_node, True
+
+    def _handle_table_constructor(self, node, file_path: str) -> Tuple[Dict | None, bool]:
+        fields = [c for c in node.children if c.type == "field"]
+        positional_idx = 1  # Lua tables are 1-indexed
+        field_keys = []
+        for f in fields:
+            if len(f.children) >= 3 and f.children[1].type == "=":
+                field_keys.append(ASTUtils.get_text(f.children[0]))
+            else:
+                field_keys.append(str(positional_idx))
+                positional_idx += 1
+
+        k_node = self._create_knowledge_node(node, file_path,properties={"table_keys": ",".join(field_keys)})
+        self._recurse_with_different_context(node, file_path, k_node["_key"], Context.TABLE_CONSTRUCTOR)
+        return k_node, True
+
+    def _handle_field(self, node, file_path: str) -> Tuple[Dict | None, bool]:
+        value = node.children[2] if (len(node.children) >= 3 and node.children[1].type == "=") else node.children[0]
+        self.build(value, file_path)
+        return None, True
+
+    def _handle_literal(self, node, file_path: str) -> Tuple[Dict | None, bool]:
+        k_node = self._create_knowledge_node(node, file_path, type="literal", properties={"value": ASTUtils.get_text(node), "kind": node.type})
+        return k_node, False
 
     def _handle_loops(self, node, file_path: str) -> Tuple[Dict | None, bool]:
         k_node = self._create_knowledge_node(node, file_path)
@@ -271,7 +337,7 @@ class CPGRelationsMixin(CPGBase):
                 symbol = self._lst.scope_lookup_by_name(block_node.id, name)
                 if symbol is not None:
                     var_node = self._create_knowledge_node(identifier, file_path, type="local_variable")
-                    self._create_knowledge_edge(k_node["_key"], var_node["_key"], "declares")
+                    self._create_knowledge_edge(k_node["_key"], var_node["_key"], Edges.DECLARES)
             if identifier.next_sibling is None or identifier.next_sibling.type != ",":
                 break
             else:
