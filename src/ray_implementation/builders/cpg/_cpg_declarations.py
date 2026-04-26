@@ -133,9 +133,43 @@ class CPGDeclarationsMixin(CPGRelationsMixin):
         self._context_stack.pop_context()
 
         # handling metrics
+        current_scope = self._lexical_scope_stack[-1]
+
+        def _variable_metrics_agr():
+            scope_obj = self._lst.scopes.get(current_scope)
+            current_syms = scope_obj.symbols.values() if scope_obj else []
+            local_current = sum(1 for s in current_syms if s.kind == "local_variable")
+            param_count   = sum(1 for s in current_syms if s.kind == "parameter")
+
+            # collect all descendant scope IDs (scopes whose ancestor chain passes through current_scope)
+            def is_descendant(scope_id):
+                s = self._lst.scopes.get(scope_id)
+                while s and s.parent:
+                    if s.parent == current_scope:
+                        return True
+                    s = self._lst.scopes.get(s.parent)
+                return False
+
+            local_nested = sum(
+                1
+                for sid, scope in self._lst.scopes.items()
+                if sid != current_scope and is_descendant(sid)
+                for sym in scope.symbols.values()
+                if sym.kind == "local_variable"
+            )
+            return "variable_metrics", {
+                "local_vars_current": local_current,
+                "local_vars_nested": local_nested,
+                "params": param_count,
+            }
+
         self._handle_metrics(node, k_node,
             lambda: ast_metrics.calculate_halstead_metrics_agr(node),
-            lambda: ast_metrics.calculate_loc_agr(node)
+            lambda: ast_metrics.calculate_loc_agr(node),
+            lambda: ast_metrics.calculate_statement_usage_agr(node),
+            lambda: ast_metrics.calculate_info_flow_agr(node),
+            _variable_metrics_agr,
+            kind="function",
         )
         return True
 
@@ -146,7 +180,10 @@ class CPGDeclarationsMixin(CPGRelationsMixin):
         # handling metrics
         self._handle_metrics(node, k_node,
             lambda: ast_metrics.calculate_halstead_metrics_agr(node),
-            lambda: ast_metrics.calculate_loc_agr(node)
+            lambda: ast_metrics.calculate_loc_agr(node),
+            lambda: ast_metrics.calculate_statement_usage_agr(node),
+            lambda: ast_metrics.calculate_function_counts_agr(self._lst),
+            kind="chunk",
         )
         return True
 

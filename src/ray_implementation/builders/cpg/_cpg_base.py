@@ -130,18 +130,15 @@ class CPGBase:
     # Metric creation
     # ------------------------------------------------------------------
 
-    def _handle_metrics(self, ast_node, k_node, *functions):
+    def _handle_metrics(self, ast_node, k_node, *functions, kind: str = ""):
         k_id = k_node["_key"]
-        # find if the node already doesn't have a metrics node
-
-        # adds the result from metrics functions into the metric node
         m_properties = {}
+        if kind:
+            m_properties["kind"] = kind
         for f in functions:
             name, result = f()
             m_properties[name] = result
 
         m_node = self._create_metrics_node(m_properties)
-
-        # create an edge
         self._create_knowledge_edge(m_node["_key"], k_id, Edges.HAS_METRICS)
 

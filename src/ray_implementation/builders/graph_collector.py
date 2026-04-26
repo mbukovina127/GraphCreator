@@ -5,6 +5,11 @@ from typing import Dict, List, Any, Optional
 
 from ray_implementation.dto.edges import Edges
 from ray_implementation.structures import SymbolTable
+from ray_implementation.graph_metrics import (
+    compute_project_metrics,
+    compute_dependency_metrics,
+    compute_global_var_metrics,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -128,11 +133,53 @@ class GraphCollector(GraphCollectorBase):
         self._create_spine(root_directory)
         self._create_indexes()
         self._resolve_cross_file_edges()
+        self._compute_graph_metrics()
         logger.info(
             "Graph collection complete: %d ast_nodes, %d ast_edges, %d kg_nodes, %d kg_edges",
             len(self._ast_nodes), len(self._ast_edges),
             len(self._knowledge_nodes), len(self._knowledge_edges),
         )
+
+    def _compute_graph_metrics(self):
+        logger.info("Computing graph-level metrics")
+        nodes = self._knowledge_nodes
+        edges = self._knowledge_edges
+
+        # reverse index: entity_node_id -> existing metric node
+        existing_metric: Dict[str, Dict] = {}
+        for edge in edges:
+            if edge["relation"] == Edges.HAS_METRICS.value:
+                m = nodes.get(edge["_from"])
+                if m and m.get("type") == "metric":
+                    existing_metric[edge["_to"]] = m
+
+        # --- project-level metric node (always new — no pre-existing node to attach to) ---
+        project_props = compute_project_metrics(nodes, edges)
+        project_props["kind"] = "project"
+        self._add_knowledge_node(
+            self._create_knowledge_node(node_id="metric:project:1", type="metric", properties=project_props)
+        )
+
+        # --- per-function dependency and global-variable metrics ---
+        dep_metrics = compute_dependency_metrics(nodes, edges)
+        gv_metrics = compute_global_var_metrics(nodes, edges)
+
+        for fn_id in set(dep_metrics) | set(gv_metrics):
+            m_node = existing_metric.get(fn_id)
+            if m_node is not None:
+                m_node["properties"]["dependency"] = dep_metrics.get(fn_id, {})
+                m_node["properties"]["global_var_access"] = gv_metrics.get(fn_id, {})
+            else:
+                props = {
+                    "kind": "function",
+                    "dependency": dep_metrics.get(fn_id, {}),
+                    "global_var_access": gv_metrics.get(fn_id, {}),
+                }
+                new_m = self._create_knowledge_node(node_id=f"metric:{fn_id}", type="metric", properties=props)
+                self._add_knowledge_node(new_m)
+                self._add_knowledge_edge(self._create_knowledge_edge(new_m["_key"], fn_id, Edges.HAS_METRICS))
+
+        logger.info("Graph metrics done: project node + %d functions", len(set(dep_metrics) | set(gv_metrics)))
 
     def _create_indexes(self):
         logger.info("Building indexes from %d knowledge nodes and %d edges",
