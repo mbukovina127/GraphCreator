@@ -34,3 +34,6 @@ aioresponses>=0.7.6
 
 # Scaling
 ray>=2.53.0
+
+# Continuous profiling
+pyroscope-io>=0.8.7

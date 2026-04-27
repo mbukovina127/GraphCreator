@@ -156,7 +156,6 @@ class CPGRelationsMixin(CPGBase):
             if i_nodes.type == "identifier":
                 name = ASTUtils.get_text(i_nodes)
                 k_node = self._create_knowledge_node(i_nodes, file_path, properties={"name": name, "write": "True"})
-                self._context_stack.push_context(k_node["_key"], Context.ASSIGNMENT)  # FIXME: only one variable for now WHAT THE HELL AM I DOING HERE
                 symbol = self._lst.scope_lookup_by_name(self._lexical_scope_stack[-1], name)
                 if symbol is not None:
                     try:
@@ -168,12 +167,14 @@ class CPGRelationsMixin(CPGBase):
                     self._create_unresolved_edge(k_node["_key"], name, Edges.REFERS_TO, self._lexical_scope_stack[-1], file_path)
                     logger.info(f"Created unresolved edge[ {k_node['_key']}, {name}]")
 
-        #Righthand side
+        #Righthand side — push once (for the last LHS node) after the loop
         exp_list = ASTUtils.first_node_of_type(node, "expression_list")
-        if (exp_list is not None
-                and self._context_stack.peek_context() == Context.ASSIGNMENT):
-            [self.build(exp, file_path) for exp in exp_list.children]
-            self._context_stack.pop_context()
+        if exp_list is not None and k_node is not None:
+            self._context_stack.push_context(k_node["_key"], Context.ASSIGNMENT)
+            try:
+                [self.build(exp, file_path) for exp in exp_list.children]
+            finally:
+                self._context_stack.pop_context()
             return k_node, True
 
         return k_node, False
@@ -187,8 +188,12 @@ class CPGRelationsMixin(CPGBase):
 
         definition = self._lst.scope_lookup_by_name(self._lexical_scope_stack[-1], name)
         if definition is not None:
-            found_node_id = self._get_nodeid_from_astid(str(definition.ast_id))
-            self._create_knowledge_edge(found_node_id, k_node["_key"], Edges.DEFINES)
+            try:
+                found_node_id = self._get_nodeid_from_astid(str(definition.ast_id))
+                self._create_knowledge_edge(found_node_id, k_node["_key"], Edges.DEFINES)
+            except KeyError:
+                self._create_unresolved_edge(k_node["_key"], name, Edges.DEFINES, self._lexical_scope_stack[-1], file_path)
+                logger.info(f"Created unresolved edge (ast_id not in map)[ {k_node['_key']}, {name}]")
         else:
             self._create_unresolved_edge(k_node["_key"], name, Edges.DEFINES, self._lexical_scope_stack[-1], file_path)
             logger.info(f"Created unresolved edge[ {k_node['_key']}, {name}]")

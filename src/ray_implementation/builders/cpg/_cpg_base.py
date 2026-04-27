@@ -49,9 +49,11 @@ class CPGBase:
 
     def _recurse_with_different_context(self, root, file_path, context_rel_nodes, context, offset: int = 0):
         self._context_stack.push_context(context_rel_nodes, context)
-        for c in root.children[offset:]:
-            self.build(c, file_path)
-        self._context_stack.pop_context()
+        try:
+            for c in root.children[offset:]:
+                self.build(c, file_path)
+        finally:
+            self._context_stack.pop_context()
 
     def _get_nodeid_from_astid(self, ast_id: str):
         try:

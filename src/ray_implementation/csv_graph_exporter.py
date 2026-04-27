@@ -102,6 +102,7 @@ def export_to_gephi_csv(
         flattened = _flatten_properties(node)
         node_type = flattened.get("type", "")
 
+        node_code = flattened.get("text", "")
         base_size = _NODE_BASE_SIZE.get(node_type, _DEFAULT_NODE_SIZE)
         size = round(base_size + degree[node_id] * 0.5, 2)
 
@@ -109,6 +110,7 @@ def export_to_gephi_csv(
             "Id":    node_id,
             "Label": node_type or node_id,
             "Size":  size,
+            "Text": node_code,
         }
         for k, v in flattened.items():
             if k != "type":

@@ -63,9 +63,8 @@ class SymbolBuilder:
                         continue
                     ident = ASTUtils.get_text(ASTUtils.first_node_of_type(a, "identifier"))
                     if ident == "require":
-                        module = ASTUtils.first_node_of_type(a, "string_content")
-                        module_name = ASTUtils.get_text(module)
-                        modules.append(module_name)
+                        module_name = ASTUtils.get_text(ASTUtils.first_node_of_type(a, "string_content"))
+                        modules.append(module_name or "")
                     else:
                         modules.append("")
 
