@@ -11,8 +11,10 @@ class ASTUtils:
     Utility class for AST operations
     """
     @staticmethod
-    def get_text(node: Node) -> str:
-        """ Returns the text of the node """
+    def get_text(node: Node) -> str | None:
+        """ Returns the text of the node, or None if node is None """
+        if node is None:
+            return None
         return node.text.decode("utf-8") if isinstance(node.text, bytes) else node.text
 
     @staticmethod

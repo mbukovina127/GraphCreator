@@ -128,9 +128,12 @@ class CPGDeclarationsMixin(CPGRelationsMixin):
         if block is None:
             logger.error(f"Function node (name={name}, file={file_path}) has no block -- node: {node}")
 
-        self._context_stack.push_context(k_node["_key"], Context.FUN_DECL)
-        self.build(block, file_path)
-        self._context_stack.pop_context()
+        if block is not None:
+            self._context_stack.push_context(k_node["_key"], Context.FUN_DECL)
+            try:
+                self.build(block, file_path)
+            finally:
+                self._context_stack.pop_context()
 
         # handling metrics
         current_scope = self._lexical_scope_stack[-1]
