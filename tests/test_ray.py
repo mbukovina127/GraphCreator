@@ -466,7 +466,7 @@ def test_graph_collector_cross_file_module_resolved(module_zip):
         "Expected at least one 'imports' edge after cross-file resolution"
     )
 def test_big_repository():
-    zip_path = os.path.join(os.path.dirname(__file__), "resources", "test_lua.zip")
+    zip_path = os.path.join(os.path.dirname(__file__), "resources", "test_lua_zipwriter.zip")
     gc, _ = _extract_and_collect(zip_path)
     import_edges = [e for e in gc._knowledge_edges if e.get("relation") == "imports"]
     nodes = gc._knowledge_nodes.values()
