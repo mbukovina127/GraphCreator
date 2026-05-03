@@ -6,22 +6,33 @@ instead of ArangoHandler.
 """
 
 import json
+from pathlib import Path
 from typing import Optional
 from .output_builder import GraphOutputBuilder
 
 
+def _path_to_key(path: str) -> str:
+    """Convert a filesystem path to a valid ArangoDB _key (no '/' allowed)."""
+    return path.replace("/", "__")
+
+
 class ASTInserter:
     """Inserts AST nodes and file structure into the in-memory graph builder"""
-    
+
     def __init__(self, graph_builder: GraphOutputBuilder):
         self.graph_builder = graph_builder
         self.nodes = self.graph_builder.get_collection("nodes")
         self.edges = self.graph_builder.get_collection("edges")
-        self.counter = 1
+        self._n_counter = 0
+        self._current_file_stem = ""
+
+    def gen_id(self) -> str:
+        self._n_counter += 1
+        return str(self._n_counter)
 
     def insert_node_from_json(self, node: dict, parent_id: Optional[str] = None):
         """Insert a node from JSON representation (for testing/import)"""
-        node_id = self.graph_builder.get_next_node_id("nodes")
+        node_id = f"{self._current_file_stem}:{node['type']}:{self.gen_id()}"
 
         self.nodes.insert({
             "_key": node_id,
@@ -44,16 +55,17 @@ class ASTInserter:
     def insert_node(self, node, parent_id: Optional[str] = None, file: Optional[str] = None):
         """
         Insert a tree-sitter AST node into the graph.
-        
+
         Args:
             node: tree-sitter Node object
             parent_id: ID of the parent node (for creating child_of edge)
             file: File path (for creating edge from file node to AST root)
         """
-        node_id = str(self.counter)
-        self.counter += 1
+        if file is not None:
+            self._current_file_stem = Path(file).stem
 
-        # Handle text encoding
+        node_id = f"{self._current_file_stem}:{node.type}:{self.gen_id()}"
+
         raw = node.text
         if isinstance(raw, bytes):
             try:
@@ -62,7 +74,7 @@ class ASTInserter:
                 text = raw.decode("latin-1")
         else:
             text = raw
-        
+
         self.nodes.insert({
             "_key": node_id,
             "ast_id": node.id,
@@ -88,22 +100,19 @@ class ASTInserter:
                     "relation": "child_of"
                 })
 
-        # Recursively insert children
         for child in node.children:
             self.insert_node(child, parent_id=node_id)
 
     def insert_dir_struct(self, dir_struct: list):
         """
         Insert directory structure into the graph.
-        
+
         Args:
             dir_struct: List of dictionaries with name, path, type, parent
         """
-        # First pass: insert all nodes
         for item in dir_struct:
-            node_id = str(self.counter)
-            self.counter += 1
-            
+            node_id = _path_to_key(item["path"])
+
             self.nodes.insert({
                 "_key": node_id,
                 "name": item["name"],
@@ -112,12 +121,11 @@ class ASTInserter:
                 "parent": item["parent"]
             })
 
-        # Second pass: create parent-child edges
         for item in dir_struct:
             if item["parent"]:
                 parent_id = self.graph_builder.get_node_id_from_path("nodes", item["parent"])
                 current_id = self.graph_builder.get_node_id_from_path("nodes", item["path"])
-                
+
                 if parent_id and current_id:
                     self.edges.insert({
                         "_from": f"nodes/{parent_id}",
@@ -127,6 +135,7 @@ class ASTInserter:
 
     def insert_ast_from_file(self, file_path: str):
         """Load and insert AST from a JSON file"""
+        self._current_file_stem = Path(file_path).stem
         with open(file_path) as f:
             ast_data = json.load(f)
         self.insert_node_from_json(ast_data)

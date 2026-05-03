@@ -28,7 +28,7 @@ class GraphManager:
         try:
             logger.info(f"[graph_manager][worker_id={wid}] Inserting AST into graph...")
             self.ast_inserter = ASTInserter(self.local_out_builder)
-            self.ast_inserter.insert_node(ast.root_node)
+            self.ast_inserter.insert_node(ast.root_node, file=file_path)
             logger.info(f"[graph_manager][worker_id={wid}] AST insertion complete.")
 
             logger.info(f"[graph_manager][worker_id={wid}] Building local symbol table...")
