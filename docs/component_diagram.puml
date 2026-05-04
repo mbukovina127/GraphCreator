@@ -1,0 +1,166 @@
+@startuml GraphCreator_Component_Diagram
+!theme plain
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+skinparam component {
+    BackgroundColor #D6EAF8
+    BorderColor #2980B9
+    FontSize 12
+}
+skinparam package {
+    BackgroundColor #EBF5FB
+    BorderColor #1A5276
+    FontSize 13
+}
+skinparam interface {
+    BackgroundColor #D5F5E3
+    BorderColor #1E8449
+}
+skinparam arrow {
+    Color #2C3E50
+    FontSize 10
+}
+
+title GraphCreator — Component Diagram
+
+'─────────────── EXTERNAL ACTORS ───────────────
+actor "SoftVis System\n(Publisher)" as publisher
+actor "Graph Store\nAdapter" as graphstore
+actor "Downstream\nConsumers" as consumers
+
+'─────────────── DAPR INFRASTRUCTURE ───────────
+package "Dapr Sidecar" as dapr_sidecar {
+    component "pub/sub:\nparser-code-tasks" as topic_in
+    component "pub/sub:\ngraph-updates" as topic_graph
+    component "pub/sub:\nresults" as topic_results
+    component "Service\nInvocation" as dapr_invoke
+}
+
+'─────────────── GRAPHCREATOR SERVICE ───────────
+package "GraphCreator Service" as graphcreator {
+
+    package "HTTP Layer" as http_layer {
+        component "FastAPI App\n(dapr_handler.py)" as fastapi
+        component "DaprClient\n(HTTP outbound)" as dapr_client
+        component "LuaCodeAnalyzer\nService" as analyzer_svc
+    }
+
+    package "File Handling" as file_handling {
+        component "ProjectStructure\nAnalyzer" as proj_struct
+        component "ZIP Extractor\n(tempdir)" as zip_extractor
+    }
+
+    package "Code Analysis" as code_analysis {
+        component "ASTManager\n(Singleton)" as ast_manager
+        component "ParallelAST\nManager" as parallel_ast
+        component "AST Metrics\n(Halstead, LOC,\nCyclomatic, etc.)" as ast_metrics
+    }
+
+    package "Ray Distributed Processing" as ray_pkg {
+        component "RayOrchestrator" as ray_orch
+        component "CGPWorker\n[Ray Actor x N]" as cgp_worker
+        component "GraphManager\n(per-file pipeline)" as graph_mgr
+    }
+
+    package "CPG Construction" as cpg_pkg {
+        component "CPGBuilder\n(CPGBase +\nRelations Mixin +\nDeclarations Mixin)" as cpg_builder
+        component "SymbolBuilder" as sym_builder
+        component "LocalOutput\nBuilder" as local_output
+    }
+
+    package "Symbol Management" as symbol_pkg {
+        component "SymbolTable\n(scopes, exports,\nimports, unresolved)" as symbol_table
+        component "ContextStack" as ctx_stack
+        component "Scope Chain\n(lexical resolution)" as scope_chain
+    }
+
+    package "Graph Building (Legacy)" as graph_legacy {
+        component "GraphOutput\nBuilder" as graph_output
+        component "ASTInserter" as ast_inserter
+        component "GraphQueries\n(Knowledge Graph)" as graph_queries
+    }
+
+    package "Graph Aggregation" as aggregation_pkg {
+        component "GraphCollector\n(post-processing)" as graph_collector
+        component "GraphCollectorBase\n(node/edge accumulation)" as graph_collector_base
+    }
+
+    package "Export & Validation" as export_pkg {
+        component "CPG v1\nExporter" as cpg_exporter
+        component "JSON Schema\nValidator" as schema_validator
+        component "CSV Graph\nExporter (Gephi)" as csv_exporter
+    }
+}
+
+package "Schema Store" as schema_store {
+    database "CPG v1 Schemas\n(node / edge / export)" as cpg_schemas
+}
+
+'─────────────── RELATIONSHIPS ───────────────
+
+' External → Dapr
+publisher --> topic_in : "publish task\n(project_id)"
+graphstore <-- dapr_invoke : "download ZIP"
+consumers <-- topic_graph : "CPG v1 payload\n(zstd compressed)"
+consumers <-- topic_results : "processing\nstatus"
+
+' Dapr → Service
+topic_in --> fastapi : "POST /parser-code-tasks\n(CloudEvents)"
+fastapi --> dapr_client : uses
+dapr_client --> dapr_invoke : "HTTP invoke"
+dapr_client --> topic_graph : "publish_compressed()"
+dapr_client --> topic_results : "publish()"
+
+' HTTP Layer internal
+fastapi --> analyzer_svc : delegates
+
+' Analyzer → File Handling
+analyzer_svc --> zip_extractor : "extract project"
+analyzer_svc --> proj_struct : "list .lua files"
+
+' Analyzer → AST (legacy path)
+analyzer_svc --> ast_manager : "parse(file_path)"
+ast_manager --> ast_metrics : "compute metrics"
+
+' Analyzer → Ray
+analyzer_svc --> ray_orch : "distribute_work(files)"
+ray_orch --> cgp_worker : "create N actors"
+ray_orch --> cgp_worker : "analyze_file(path)"
+cgp_worker --> parallel_ast : "parse(file_path)"
+cgp_worker --> graph_mgr : "generate_graph()"
+
+' GraphManager internal
+graph_mgr --> ast_inserter : "insert AST nodes"
+graph_mgr --> sym_builder : "build symbol table"
+graph_mgr --> cpg_builder : "build CPG"
+
+' CPG Builder
+cpg_builder --> local_output : "accumulate nodes/edges"
+cpg_builder --> symbol_table : "resolve identifiers"
+cpg_builder --> ctx_stack : "track walk context"
+
+' Symbol resolution
+sym_builder --> symbol_table : "register declarations"
+symbol_table --> scope_chain : "lexical lookup"
+
+' Ray → GraphCollector (aggregation)
+ray_orch --> graph_collector : "collect(results, root_dir)"
+graph_collector --> graph_collector_base : extends
+' graph_collector --> graph_collector : "_create_spine()\n(file-system hierarchy)"
+' graph_collector --> graph_collector : "_create_indexes()\n(module + export index)"
+' graph_collector --> graph_collector : "_resolve_cross_file_edges()\n(require() + unresolved refs)"
+' graph_collector --> graph_collector : "_compute_graph_metrics()\n(project + per-function)"
+
+' Legacy path
+analyzer_svc --> graph_output : "(legacy) build graph"
+graph_output --> ast_inserter : uses
+graph_output --> graph_queries : "build_KG()"
+
+' Export
+graph_collector --> cpg_exporter : "merged graph\n→ export_cpg_v1()"
+analyzer_svc --> cpg_exporter : "(legacy) export_cpg_v1()"
+cpg_exporter --> schema_validator : "validate()"
+schema_validator --> cpg_schemas : reads
+analyzer_svc --> csv_exporter : "(optional) Gephi export"
+
+@enduml
