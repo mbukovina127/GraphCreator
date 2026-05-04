@@ -37,3 +37,8 @@ ray>=2.53.0
 
 # Continuous profiling
 pyroscope-io>=0.8.7
+
+# Benchmarking and evaluation
+matplotlib>=3.9.0
+psutil>=6.0.0
+pytest-benchmark>=4.0.0

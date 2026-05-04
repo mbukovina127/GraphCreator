@@ -93,7 +93,7 @@ pytest --cov=src --cov-report=html
 
 # Run specific test file
 pytest tests/test_code_analyzer.py
-
+ 
 # Skip integration tests (no Docker)
 SKIP_INTEGRATION_TESTS=true pytest
 ```
