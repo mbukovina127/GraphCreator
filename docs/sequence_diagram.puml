@@ -1,0 +1,197 @@
+@startuml GraphCreator_Sequence_Diagram
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceGroupBorderThickness 1.5
+skinparam participant {
+    BackgroundColor #D6EAF8
+    BorderColor #2980B9
+}
+skinparam actor {
+    BackgroundColor #D5F5E3
+    BorderColor #1E8449
+}
+skinparam note {
+    BackgroundColor #FEF9E7
+    BorderColor #F39C12
+}
+
+title GraphCreator — Sequence Diagram\n(Full Processing Pipeline)
+
+'─────────────── PARTICIPANTS ───────────────
+actor "SoftVis\nPublisher" as publisher
+participant "Dapr Sidecar\n(pub/sub)" as dapr
+participant "FastAPI\n(dapr_handler)" as fastapi
+participant "LuaCodeAnalyzer\nService" as svc
+participant "DaprClient" as dapr_client
+participant "Graph Store\nAdapter" as graphstore
+participant "ProjectStructure\nAnalyzer" as proj_struct
+participant "RayOrchestrator" as ray_orch
+participant "CGPWorker\n[Ray Actor]" as worker
+participant "GraphManager" as graph_mgr
+participant "SymbolBuilder" as sym_builder
+participant "CPGBuilder" as cpg_builder
+participant "SymbolTable" as sym_table
+participant "GraphOutput\nBuilder (Legacy)" as graph_output
+participant "CPG v1\nExporter" as exporter
+participant "JSON Schema\nValidator" as validator
+participant "Downstream\nConsumers" as consumers
+
+'─────────────── FLOW ───────────────
+
+== 1. Message Reception ==
+
+publisher -> dapr : publish("parser-code-tasks",\n{project_id, incremental})
+dapr -> fastapi : POST /parser-code-tasks\n(CloudEvents envelope)
+fastapi -> fastapi : extract project_id\nfrom data field
+fastapi -> svc : process_project(project_id, incremental)
+activate svc
+
+== 2. Download & Extract ==
+
+svc -> dapr_client : download_project_zip(project_id)
+activate dapr_client
+dapr_client -> graphstore : GET /files/{project_id}
+graphstore --> dapr_client : ZIP bytes
+dapr_client --> svc : zip bytes
+deactivate dapr_client
+
+svc -> svc : create tempdir\n/tmp/lua-analyzer-{id}-{rand}/
+svc -> svc : extract ZIP → extracted/
+
+== 3. Project Structure Analysis ==
+
+svc -> proj_struct : analyze_project_structure(extracted_path)
+proj_struct -> proj_struct : recursive walk\n(dirs + .lua files)
+proj_struct --> svc : [{name, path, type, parent}, ...]
+
+note right of svc
+  Filters for .lua files only;
+  directory nodes added to graph
+  for structural context.
+end note
+
+== 4a. Ray-Distributed Parsing (New Path) ==
+
+group Ray Distributed [if Ray available]
+    svc -> ray_orch : create_workers(num_workers=2)
+    ray_orch -> ray_orch : ray.init()
+    ray_orch -> worker : [Actor] CGPWorker.remote() ×N
+    ray_orch --> svc : worker handles
+
+    loop for each .lua file (round-robin)
+        svc -> ray_orch : distribute_work(files)
+        ray_orch -> worker : analyze_file.remote(file_path)
+        activate worker
+
+        worker -> worker : ParallelASTManager.parse(file_path)
+        note right of worker
+          ParallelASTManager is NOT
+          a singleton — each Ray actor
+          keeps its own tree-sitter
+          parser instance.
+        end note
+
+        worker -> graph_mgr : generate_graph(ast, file_path)
+        activate graph_mgr
+
+        graph_mgr -> graph_mgr : ASTInserter.insert_node(root)\n→ AST nodes + edges
+
+        graph_mgr -> sym_builder : build(ast, file_path)
+        activate sym_builder
+        sym_builder -> sym_builder : walk AST for\ndeclarations
+        sym_builder -> sym_table : register(SymbolID)\n[vars, functions, params,\nmodule imports]
+        sym_builder --> graph_mgr : populated SymbolTable
+        deactivate sym_builder
+
+        graph_mgr -> cpg_builder : build(root_node, file_path)
+        activate cpg_builder
+
+        loop for each AST node (recursive)
+            cpg_builder -> cpg_builder : push/pop scope\n(ScopeStack)
+            cpg_builder -> cpg_builder : create_knowledge_node_if_possible()\n→ _node_function / _node_variable\n   / _node_chunk / _node_module
+            cpg_builder -> sym_table : scope_lookup_by_name(ident)
+            sym_table -> sym_table : walk scope chain\n(lexical resolution)
+            sym_table --> cpg_builder : SymbolID or None
+            cpg_builder -> cpg_builder : create_relation_if_possible()\n→ _handle_call / _handle_assignment\n   / _handle_identifier / _handle_block\n   / _handle_control_statement
+            note right of cpg_builder
+              ContextStack tracks semantic
+              context (VAR_DECL, ARGUMENTS, etc.)
+              so the same identifier node gets
+              different edge types depending
+              on where it appears.
+            end note
+        end
+
+        cpg_builder --> graph_mgr : local CPG graph
+        deactivate cpg_builder
+
+        graph_mgr --> worker : {ast_graph, knowledge_graph,\nunresolved_edges, exports, imports}
+        deactivate graph_mgr
+
+        worker --> ray_orch : local_graph (future resolved)
+        deactivate worker
+    end
+
+    ray_orch -> ray_orch : ray.get(futures)\n→ collect all local graphs
+    ray_orch --> svc : [local_graphs list]
+end
+
+== 4b. Legacy Single-Thread Path ==
+
+group Legacy [fallback / current main path]
+    svc -> graph_output : new GraphOutputBuilder()
+    loop for each .lua file
+        svc -> graph_output : ASTInserter.insert_node(root)
+    end
+    svc -> graph_output : GraphQueries.build_KG()
+    graph_output --> svc : in-memory graph
+end
+
+== 5. Export & Validate ==
+
+svc -> exporter : export_cpg_v1(project_id)
+exporter -> exporter : map internal types\n→ CPG v1 standard types\n(FUNCTION, VARIABLE, etc.)
+exporter -> exporter : prefix all IDs:\n"{project_id}:{node_key}"
+exporter --> svc : cpg_v1 dict
+
+svc -> validator : validate(cpg_v1, schema)
+validator -> validator : jsonschema.validate()\nagainst cpg.export.schema.json
+alt validation fails
+    validator --> svc : ValidationError
+    svc -> svc : log warning\n(continue anyway)
+else validation passes
+    validator --> svc : OK
+end
+
+== 6. Publish Results ==
+
+svc -> dapr_client : publish_compressed(\n  "graph-updates", cpg_v1)
+activate dapr_client
+dapr_client -> dapr_client : json.dumps → zstd.compress\n→ base64.encode
+dapr_client -> dapr : POST /v1.0/publish/\npubsub/graph-updates
+dapr -> consumers : CPG v1 payload\n(compressed)
+dapr_client --> svc : 204 No Content
+deactivate dapr_client
+
+svc -> dapr_client : publish("results", ProcessingResult)
+activate dapr_client
+dapr_client -> dapr : POST /v1.0/publish/\npubsub/results
+dapr -> consumers : {status, files_processed,\nfiles_failed, errors}
+dapr_client --> svc : 204 No Content
+deactivate dapr_client
+
+== 7. Cleanup & Acknowledge ==
+
+svc -> svc : shutil.rmtree(tempdir)
+svc --> fastapi : ProcessingResult
+deactivate svc
+fastapi --> dapr : {"status": "SUCCESS"}\n(Dapr message ack)
+
+note over dapr, fastapi
+  Returning {"status": "SUCCESS"} tells Dapr
+  not to redeliver the message.
+  Any exception would cause Dapr to retry.
+end note
+
+@enduml
