@@ -1,6 +1,9 @@
 """ Improved Graph Output Builder"""
+import importlib.util
+import json
 import logging
 import os
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 from ray_implementation.dto.edges import Edges
@@ -96,10 +99,10 @@ class GraphCollectorBase:
             "_key": node_id,
             "symbol_id": symbol_id,
             "type": type,
-            "text": text,
+            "text": text if text is not None else "",
             "start_byte": start_byte,
             "end_byte": end_byte,
-            "file_path": file_path,
+            "file_path": file_path if file_path is not None else "",
             "properties": {} if properties is None else properties,
         }
 
@@ -139,6 +142,40 @@ class GraphCollector(GraphCollectorBase):
             len(self._ast_nodes), len(self._ast_edges),
             len(self._knowledge_nodes), len(self._knowledge_edges),
         )
+        self._validate_schema()
+
+    def _validate_schema(self) -> None:
+        """Validate all knowledge nodes against the JSON schema. Logs warnings for violations."""
+        if importlib.util.find_spec("jsonschema") is None:
+            logger.warning("[schema] jsonschema not installed — skipping node validation")
+            return
+
+        import jsonschema
+
+        schema_path = Path(__file__).parents[3] / "schema_lua" / "cpg.node.schema.json"
+        if not schema_path.exists():
+            logger.warning("[schema] schema file not found at %s — skipping validation", schema_path)
+            return
+
+        import random
+        schema = json.loads(schema_path.read_text())
+        _SAMPLE_SIZE = 200
+        items = list(self._knowledge_nodes.items())
+        sample = random.sample(items, min(_SAMPLE_SIZE, len(items)))
+        violations = []
+        for key, node in sample:
+            try:
+                jsonschema.validate(node, schema)
+            except jsonschema.ValidationError as e:
+                violations.append(f"Node {key}: {e.message}")
+
+        if violations:
+            for v in violations[:10]:
+                logger.warning("[schema] %s", v)
+            if len(violations) > 10:
+                logger.warning("[schema] ... and %d more violations", len(violations) - 10)
+        else:
+            logger.info("[schema] %d/%d sampled nodes passed schema validation", len(sample), len(self._knowledge_nodes))
 
     def _compute_graph_metrics(self):
         logger.info("Computing graph-level metrics")
@@ -373,7 +410,6 @@ class GraphCollector(GraphCollectorBase):
 
     def _collect_local_results(self, results: List[Dict[str, Any]]):
         """Collects the results from ray results and stores them in memory"""
-        #TODO create a check for result JSON schema
         logger.info("Collecting results for %d files", len(results))
         for result in results:
             self.results[result["file"]] = result
