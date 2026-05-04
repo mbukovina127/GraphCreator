@@ -1,0 +1,66 @@
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  name: raycluster
+  namespace: ray-system
+  labels:
+    app: raycluster
+spec:
+  rayVersion: "2.53.0"
+
+  # ── Head node ──────────────────────────────────────────────────────────────
+  # The head is a coordinator only: it runs the GCS server, the scheduler,
+  # and the dashboard. num-cpus: "0" prevents the scheduler from placing
+  # analyze_file tasks here.
+  headGroupSpec:
+    rayStartParams:
+      dashboard-host: "0.0.0.0"
+      num-cpus: "0"
+    template:
+      spec:
+        containers:
+          - name: ray-head
+            image: rayproject/ray:2.53.0-py311
+            ports:
+              - containerPort: 6379   # GCS server (inter-node)
+                name: gcs
+              - containerPort: 8265   # Ray dashboard
+                name: dashboard
+              - containerPort: 10001  # Ray client server (used by RAY_ADDRESS)
+                name: client
+            resources:
+              requests:
+                cpu: "500m"
+                memory: "1Gi"
+              limits:
+                cpu: "1000m"
+                memory: "2Gi"
+
+  # ── Worker group ───────────────────────────────────────────────────────────
+  # Workers run analyze_file tasks. KubeRay autoscaler watches the Ray task
+  # queue and scales replicas between minReplicas and maxReplicas automatically.
+  # The application image is used (not the base Ray image) so that
+  # ray_implementation imports resolve inside worker processes.
+  workerGroupSpecs:
+    - groupName: cpu-workers
+      replicas: 1
+      minReplicas: 0      # scales to zero when the task queue is empty
+      maxReplicas: 10
+      rayStartParams: {}
+      template:
+        spec:
+          containers:
+            - name: ray-worker
+              image: registry.example.com/softvis/lua-code-analyzer:latest
+              env:
+                - name: PYTHONPATH
+                  value: /app/src
+                - name: RAY_TMPDIR
+                  value: /tmp
+              resources:
+                requests:
+                  cpu: "500m"
+                  memory: "512Mi"
+                limits:
+                  cpu: "2000m"
+                  memory: "2Gi"

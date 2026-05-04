@@ -58,6 +58,10 @@ spec:
               value: "8080"
             - name: PYTHONUNBUFFERED
               value: "1"
+            - name: RAY_ADDRESS
+              value: "ray://raycluster-head-svc.ray-system.svc.cluster.local:10001"
+            - name: RAY_TMPDIR
+              value: "/tmp"
           resources:
             requests:
               cpu: "500m"

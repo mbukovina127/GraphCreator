@@ -14,7 +14,7 @@ from ray_implementation.managers.ray_orchestrator import RayOrchestrator
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from code_analyzer.parse_code import ParallelASTManager
-from ray_implementation import CGPWorker
+from ray_implementation import analyze_file
 from ray_implementation.managers.graph_manager import GraphManager
 from ray_implementation.structures import SymbolTable
 
@@ -262,14 +262,13 @@ def test_graph_manager_clear_resets_state():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CGPWorker (Ray Actor)
+# analyze_file (Ray task)
 # ──────────────────────────────────────────────────────────────────────────────
 
 def test_cpg_worker_result_shape():
     file_path = create_temp_lua(SAMPLE_LUA_SIMPLE)
     try:
-        worker = CGPWorker.remote("test_worker_1")
-        result = ray.get(worker.analyze_file.remote(file_path))
+        result = ray.get(analyze_file.remote(file_path))
 
         assert result is not None
         assert "ast_graph" in result
@@ -285,12 +284,11 @@ def test_cpg_worker_result_shape():
 
 
 def test_cpg_worker_is_stateless_between_calls():
-    """Each analyze_file() call should produce independent results for the same file."""
+    """Two invocations on the same file should produce identical result shapes."""
     file_path = create_temp_lua(SAMPLE_LUA_SIMPLE)
     try:
-        worker = CGPWorker.remote("test_worker_2")
-        r1 = ray.get(worker.analyze_file.remote(file_path))
-        r2 = ray.get(worker.analyze_file.remote(file_path))
+        r1 = ray.get(analyze_file.remote(file_path))
+        r2 = ray.get(analyze_file.remote(file_path))
         assert len(r1["knowledge_graph"]["vertices"]) == len(r2["knowledge_graph"]["vertices"])
     finally:
         os.unlink(file_path)
@@ -304,8 +302,7 @@ def test_cpg_worker_is_stateless_between_calls():
 def test_cpg_worker_various_inputs(test_code):
     file_path = create_temp_lua(test_code)
     try:
-        worker = CGPWorker.remote("test_worker_3")
-        result = ray.get(worker.analyze_file.remote(file_path))
+        result = ray.get(analyze_file.remote(file_path))
         assert result is not None
         assert len(result["knowledge_graph"]["vertices"]) > 0
     finally:
@@ -326,7 +323,6 @@ def test_orchestrator_result_shape(test_code):
     file_path = create_temp_lua(test_code)
     try:
         orchestrator = RayOrchestrator()
-        orchestrator.create_workers(1)
         futures = orchestrator.distribute_work([{"path": file_path}])
         results = ray.get(futures)
 
@@ -337,15 +333,13 @@ def test_orchestrator_result_shape(test_code):
         assert len(result["knowledge_graph"]["vertices"]) > 0
     finally:
         os.unlink(file_path)
-        orchestrator.workers = []  # clear workers without shutting down Ray
 
 
 def test_orchestrator_distributes_to_multiple_workers():
-    """Work should be spread across workers round-robin."""
+    """Submitting 4 files produces 4 futures, all with valid results."""
     files = [create_temp_lua(SAMPLE_LUA_SIMPLE) for _ in range(4)]
     try:
         orchestrator = RayOrchestrator()
-        orchestrator.create_workers(2)
         futures = orchestrator.distribute_work([{"path": f} for f in files])
         assert len(futures) == 4
         results = ray.get(futures)
@@ -354,13 +348,12 @@ def test_orchestrator_distributes_to_multiple_workers():
     finally:
         for f in files:
             os.unlink(f)
-        orchestrator.workers = []
 
 
 def test_orchestrator_raises_without_workers():
     orchestrator = RayOrchestrator()
     with pytest.raises(IndexError):
-        orchestrator.distribute_work([{"path": "dummy.lua"}])
+        orchestrator.distribute_work([])
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -415,10 +408,8 @@ def _extract_and_collect(zip_path: str) -> tuple[GraphCollector, list]:
     files = [x for x in project_structure if x["type"] == "file"]
 
     orchestrator = RayOrchestrator()
-    orchestrator.create_workers(2)
     futures = orchestrator.distribute_work(files)
     results = ray.get(futures)
-    orchestrator.workers = []
 
     gc = GraphCollector()
     gc.collect(results, extract_dir)

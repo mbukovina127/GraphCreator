@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 import ray
 
@@ -6,44 +7,23 @@ from code_analyzer.parse_code import ParallelASTManager
 from ray_implementation.structures import SymbolTable
 from .graph_manager import GraphManager
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 @ray.remote
-class CGPWorker:
-    """
-    Ray Actor for analazing and creating a local cpg graph
-    """
-    def __init__(self, worker_id: str):
-        self.ast_manager = ParallelASTManager(worker_id)
-        self.lst = SymbolTable(worker_id)
-        self.graph_manager = GraphManager(self.lst)
+def analyze_file(file_path: str):
+    """Stateless Ray task: parse one Lua file and return its local CPG graphs."""
+    worker_id = str(uuid.uuid4())
 
-    def analyze_file(self, file_path: str):
-        """creates ast and local cgp graph"""
-        # clean up before running the actor to keep it stateless
-        self.ast_manager.clear()
-        self.lst.clear_all()
-        self.graph_manager.clear()
-        logger.info(f"[Worker_id:{self.lst.worker_id}] Cleared previous state of CPGWorker: {file_path}")
+    ast_manager = ParallelASTManager(worker_id)
+    lst = SymbolTable(worker_id)
+    graph_manager = GraphManager(lst)
 
-        try:
-            ast = self.ast_manager.parse(file_path)
-        except Exception as e:
-            logger.error(f"[Worker_id:{self.lst.worker_id}] Failed to parse file: {file_path}: {e}")
-            return None
+    try:
+        ast = ast_manager.parse(file_path)
+    except Exception as e:
+        logger.error(f"[task][worker_id={worker_id}] Failed to parse {file_path}: {e}")
+        return None
 
-        # Populating the graphs in
-        self.graph_manager.generate_graph(ast, file_path)
-        graphs = self.graph_manager.get_graphs()
-        return graphs
-
-
-
-
-
-
-
-
-
-        
+    graph_manager.generate_graph(ast, file_path)
+    return graph_manager.get_graphs()
