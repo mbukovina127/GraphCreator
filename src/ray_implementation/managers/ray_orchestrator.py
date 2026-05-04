@@ -1,35 +1,21 @@
+import os
 from typing import List
 
 import ray
 
-from .cgp_worker import CGPWorker
+from .cgp_worker import analyze_file
+
 
 class RayOrchestrator:
     def __init__(self):
-        self.workers: List = []
-        pass
-
-    def create_workers(self, number_of_workers) -> List:
-        ray.init(ignore_reinit_error=True) #TODO Temprorary
-        self.workers = [
-            CGPWorker.remote(worker_id=f"worker_{i}")
-            for i in range(number_of_workers)
-        ]
-        return self.workers
+        address = os.getenv("RAY_ADDRESS")
+        ray.init(address=address, ignore_reinit_error=True)
 
     def distribute_work(self, files: list) -> List[ray.ObjectRef]:
-        """distribute work to workers @returns futures"""
-        if self.workers.__len__() == 0:
-            raise IndexError("No workers")
-
-        futures = []
-
-        for i, file_info in enumerate(files):
-            worker = self.workers[i % len(self.workers)]
-            futures.append(worker.analyze_file.remote(file_info["path"]))
-
-        return futures
+        """Submit one analyze_file task per file; returns futures."""
+        if not files:
+            raise IndexError("No files provided")
+        return [analyze_file.remote(f["path"]) for f in files]
 
     def cleanup(self):
-        self.workers = []
         ray.shutdown()

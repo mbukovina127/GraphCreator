@@ -1,4 +1,4 @@
 from .ray_orchestrator import RayOrchestrator
-from .cgp_worker import CGPWorker
+from .cgp_worker import analyze_file
 
-__all__ = [CGPWorker, RayOrchestrator]
+__all__ = ["analyze_file", "RayOrchestrator"]

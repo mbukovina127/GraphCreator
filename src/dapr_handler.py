@@ -262,7 +262,6 @@ class LuaCodeAnalyzerService:
 
             # run CPG builder with ray and collect the exported graphs
             orchestrator = RayOrchestrator()
-            orchestrator.create_workers(number_of_workers=2) # 2 for now
             futures = orchestrator.distribute_work(lua_files)
             results = ray.get(futures)
 
