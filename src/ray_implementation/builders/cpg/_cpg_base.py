@@ -10,6 +10,19 @@ from ray_implementation.structures import SymbolTable, ContextStack
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_VALID_NODE_TYPES = {
+    "chunk", "local_function_definition", "global_function_definition",
+    "local_variable_declaration", "global_variable_declaration",
+    "module_import", "module", "identifier", "index_expression",
+    "function_call", "if_statement", "else_statement", "elseif_statement",
+    "for_statement", "while_statement", "repeat_statement",
+    "for_numeric_clause", "for_generic_clause", "block",
+    "expression_list", "binary_expression", "return_statement",
+    "table_constructor", "literal", "local_variable",
+    "directory", "file", "metric",
+}
+
+
 class CPGBase:
     """
     Low-level graph operations: node/edge creation, ID generation, scope stack.
@@ -87,11 +100,16 @@ class CPGBase:
 
     def _create_knowledge_node(self, node, file_path: str, type: str | None = None, text: str | None = None, properties: Dict | None = None, commit: bool = True) -> Dict[str, Any]:
         """creates a knowledge node, defaulting to the AST node's properties. commit argument decides wheteher to automatically insert the knowledge node to the graph collection"""
-        node_id = f"{self.file_name}:{node.type if type is None else type}:{self.gen_id()}"
+        resolved_type = node.type if type is None else type
+        if resolved_type not in _VALID_NODE_TYPES:
+            raise ValueError(f"Unknown CPG node type '{resolved_type}' (file={file_path})")
+        node_id = f"{self.file_name}:{resolved_type}:{self.gen_id()}"
+        if not node_id:
+            raise ValueError(f"Node _key must be a non-empty string (file={file_path})")
         a_node = {
             "_key": node_id,
             "symbol_id": node.id,
-            "type": node.type if type is None else type,
+            "type": resolved_type,
             "text": ASTUtils.get_text(node) if text is None else text,
             "start_byte": node.start_byte,
             "end_byte": node.end_byte,
@@ -107,6 +125,8 @@ class CPGBase:
         return self.__insert_knowledge_node(ast_node, k_node)
 
     def _create_knowledge_edge(self, from_node_id: str, to_node_id: str, edge_type: Edges) -> Dict[str, Any]:
+        if not from_node_id or not to_node_id:
+            raise ValueError(f"Edge _from/_to must be non-empty strings: {from_node_id!r} → {to_node_id!r}")
         edge = {
             "_from": from_node_id,
             "_to": to_node_id,
