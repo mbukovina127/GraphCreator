@@ -133,8 +133,8 @@ def run_benchmark(dataset: str, num_cpus: int = 4) -> BenchmarkResult:
     tracemalloc.start()
 
     t0 = time.perf_counter()
-    futures = orchestrator.distribute_work(files)
-    results = ray.get(futures)
+    futures = orchestrator.distribute_work_batched(files)
+    results = [r for batch in ray.get(futures) for r in batch]
     t1 = time.perf_counter()
 
     _, peak_traced = tracemalloc.get_traced_memory()
