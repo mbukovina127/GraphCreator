@@ -28,8 +28,8 @@ _SRC = Path(__file__).parent.parent / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from ray_implementation.managers.ray_orchestrator import RayOrchestrator
-from ray_implementation.builders.graph_collector import GraphCollector
+from managers.ray_orchestrator import RayOrchestrator
+from builders.graph_collector import GraphCollector
 from benchmarks.datasets import extract_dataset, load_repo_directory, dataset_exists, DATASETS
 
 _RESULTS_DIR = Path(__file__).parent / "results"

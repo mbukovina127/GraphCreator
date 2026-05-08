@@ -28,12 +28,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from code_analyzer.parse_code import ASTManager
-from file_system_analyzer.project_structure_analyzer import analyze_project_structure
-from graph_builder.output_builder import GraphOutputBuilder
-from graph_builder.ast_inserter import ASTInserter
-from graph_builder.graph_queries import GraphQueries
-from ray_implementation.managers.ray_orchestrator import RayOrchestrator
+from project_structure_analyzer import analyze_project_structure
+from managers.ray_orchestrator import RayOrchestrator
+from builders.graph_collector import GraphCollector
 
 # ============================================================================
 # Configuration
@@ -195,7 +192,6 @@ class LuaCodeAnalyzerService:
     
     def __init__(self, dapr_client: DaprClient):
         self.dapr = dapr_client
-        self.ast_manager: ASTManager = ASTManager()
     
     def _validate_cpg(self, data: Dict[str, Any]):
         """Validate CPG data against JSON schema"""
@@ -251,68 +247,25 @@ class LuaCodeAnalyzerService:
             
             logger.info(f"Extracted project to {extract_dir}")
             
-            # Clear AST manager for new project
-            self.ast_manager.clear()  # type: ignore[attr-defined]
-            
             # Analyze project structure
             project_items = analyze_project_structure(extract_dir)
             lua_files = [item for item in project_items if item["type"] == "file"]
-            
+
             logger.info(f"Found {len(lua_files)} Lua files to analyze")
 
-            # run CPG builder with ray and collect the exported graphs
+            # Distribute work across Ray cluster, collect per-file graphs
             orchestrator = RayOrchestrator()
             futures = orchestrator.distribute_work(lua_files)
-            results = ray.get(futures)
+            ray_results = ray.get(futures)
+            result.files_processed = len([r for r in ray_results if r is not None])
+            result.files_failed = len(lua_files) - result.files_processed
 
-            # we get a list of files we then run the graph collector with root directory and a lua files and then we check whether the directory has the file
+            # Merge local graphs, resolve cross-file edges, compute metrics
+            gc = GraphCollector()
+            gc.collect(ray_results, extract_dir)
 
-            # we merge the local graphs into the bigger ones and we keep the imports, exports and unresolved edges,
-
-            # we then run the resolver for unresolved edges
-
-
-            # Initialize graph builder
-            graph_builder = GraphOutputBuilder()
-            ast_inserter = ASTInserter(graph_builder)
-            
-            # Insert directory structure
-            ast_inserter.insert_dir_struct(project_items)
-            
-            # Parse each Lua file
-            for file_item in lua_files:
-                file_path = file_item["path"]
-                try:
-                    ast = self.ast_manager.parse(file_path)
-                    ast_inserter.insert_node(ast.root_node, file=file_path)
-                    result.files_processed += 1
-                    logger.debug(f"Parsed: {file_path}")
-                except Exception as e:
-                    error = FileError(
-                        file_path=file_path,
-                        error_type=type(e).__name__,
-                        error_message=str(e)
-                    )
-                    result.errors.append(error)
-                    result.files_failed += 1
-                    logger.warning(f"Failed to parse {file_path}: {e}")
-            
-            # Build knowledge graph
-            graph_queries = GraphQueries(graph_builder)
-            graph_queries.build_KG()
-            
-            # 1. Export original format (for comparison/legacy)
-            legacy_graph_data = graph_builder.export_all()
-            legacy_graph_data["project_id"] = project_id
-            
-            # Save legacy copy to /tmp (avoid read-only filesystem in container)
-            legacy_copy_path = os.path.join(tempfile.gettempdir(), f"legacy_graph_{project_id}.json")
-            with open(legacy_copy_path, "w") as f:
-                json.dump(legacy_graph_data, f, indent=2)
-            logger.info(f"Saved legacy graph copy to {legacy_copy_path}")
-
-            # 2. Export new CPG v1 format
-            cpg_v1_data = graph_builder.export_cpg_v1(project_id)
+            # Export CPG v1 format
+            cpg_v1_data = gc.export_cpg_v1(project_id)
             
             # Save CPG v1 copy to /tmp
             cpg_copy_path = os.path.join(tempfile.gettempdir(), f"cpg_v1_{project_id}.json")
@@ -320,12 +273,9 @@ class LuaCodeAnalyzerService:
                 json.dump(cpg_v1_data, f, indent=2)
             logger.info(f"Saved CPG v1 graph copy to {cpg_copy_path}")
 
-            # 3. Validate against schema
             self._validate_cpg(cpg_v1_data)
             logger.info(f"CPG v1 data validated successfully for project {project_id}")
-            
-            # 4. Publish the export in the CPG v1 schema (meta_data/nodes/edges)
-            # Use compressed publish for efficient transfer of large graphs
+
             await self.dapr.publish_compressed(PUBSUB_NAME, TOPIC_GRAPH_UPDATES, cpg_v1_data)
             logger.info(
                 f"Published CPG v1 export for project {project_id} ("

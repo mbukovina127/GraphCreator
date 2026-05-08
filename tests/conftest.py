@@ -238,17 +238,17 @@ def rabbitmq_connection_string(rabbitmq_container) -> str:
 
 @pytest.fixture
 def graph_output_builder():
-    """Create a fresh GraphOutputBuilder instance"""
-    from graph_builder.output_builder import GraphOutputBuilder  # type: ignore[import-not-found]
-    return GraphOutputBuilder()
+    """Create a fresh LocalOutputBuilder instance"""
+    from builders.local_output_builder import LocalOutputBuilder
+    return LocalOutputBuilder()
 
 
 @pytest.fixture
 def ast_manager():
     """Create a fresh ASTManager instance"""
-    from code_analyzer.parse_code import ASTManager  # type: ignore[import-not-found]
+    from parser import ASTManager
     manager = ASTManager()
-    manager.clear()  # type: ignore[attr-defined]
+    manager.clear()
     return manager
 
 

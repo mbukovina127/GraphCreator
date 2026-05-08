@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "schema_lua/v1/cpg.edge.schema.json",
+  "title": "Universal CPG Edge (v1)",
+  "type": "object",
+  "required": [
+    "_from",
+    "_to",
+    "relation"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "_from": {
+      "type": "string",
+      "description": "The _key of the source node."
+    },
+    "_to": {
+      "type": "string",
+      "description": "The _key of the target node."
+    },
+    "relation": {
+      "type": "string",
+      "description": "Semantic relationship type from the Edges enum in dto/edges.py.",
+      "enum": [
+        "defines",
+        "declares",
+        "contains",
+        "imports",
+        "has_block",
+        "has_parameters",
+        "has_field",
+        "has_argument",
+        "has_condition",
+        "refers_to",
+        "calls",
+        "returns",
+        "flows_to",
+        "initializes",
+        "assigns_to",
+        "inside_of",
+        "executes",
+        "is",
+        "child_of",
+        "has_metrics",
+        "AST_CHILD",
+        "has_parameter",
+        "documents",
+        "has_scope",
+        "nested",
+        "captures",
+        "reaches"
+      ]
+    },
+    "properties": {
+      "type": "object",
+      "description": "Optional edge metadata.",
+      "additionalProperties": true,
+      "properties": {
+        "index": {
+          "type": "integer",
+          "description": "Positional index of an argument or parameter in the call/definition."
+        },
+        "operator": {
+          "type": "string",
+          "description": "Operator string for binary_expression edges (e.g. '+', '..', '==')."
+        }
+      }
+    }
+  }
+}

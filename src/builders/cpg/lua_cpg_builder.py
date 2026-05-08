@@ -1,6 +1,6 @@
-from ray_implementation.builders.local_output_builder import LocalOutputBuilder
-from ray_implementation.structures import SymbolTable
-from ray_implementation.ast_utils import ASTUtils
+from builders.local_output_builder import LocalOutputBuilder
+from structures import SymbolTable
+from ast_utils import ASTUtils
 from ._cpg_declarations import CPGDeclarationsMixin
 
 
@@ -34,8 +34,7 @@ class CPGBuilder(CPGDeclarationsMixin):
             recursive = False
             if self.create_knowledge_node_if_possible(node, file_path):
                 recursive = True
-
-            if self.create_relation_if_possible(node, file_path):
+            elif self.create_relation_if_possible(node, file_path):
                 recursive = True
 
             if recursive:

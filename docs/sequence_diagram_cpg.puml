@@ -1,0 +1,123 @@
+@startuml GraphCreator_CPG_Construction
+!theme plain
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontSize 13
+skinparam sequenceArrowThickness 1.5
+skinparam sequenceGroupBorderThickness 1.5
+skinparam sequenceMessageAlign center
+skinparam participantPadding 20
+skinparam boxPadding 16
+
+skinparam participant {
+    BackgroundColor #D6EAF8
+    BorderColor #2980B9
+    FontSize 13
+}
+skinparam sequence {
+    ArrowFontSize 11
+    GroupFontSize 13
+    GroupBorderThickness 1.5
+    DividerFontSize 13
+    DividerBorderThickness 1.5
+    ReferenceFontSize 12
+}
+skinparam note {
+    BackgroundColor #FEF9E7
+    BorderColor #F39C12
+    FontSize 11
+}
+
+title GraphCreator — CPG Semantic Construction
+
+'─────────────── PARTICIPANTS ───────────────
+participant "GraphManager"          as graph_mgr
+participant "SymbolBuilder"         as sym_builder
+participant "SymbolTable"           as sym_table
+participant "CPGBuilder"            as cpg_builder
+participant "LocalOutput\nBuilder"  as local_out
+participant "GraphCollector"        as graph_collector
+participant "CPG v1\nExporter"      as exporter
+
+'─────────────── PER-FILE PIPELINE (repeated for each .lua file) ───────────────
+
+loop for each .lua file
+
+    == 1. AST Insertion ==
+
+    graph_mgr -> graph_mgr : ASTInserter.insert_node(root)\n→ raw AST nodes + AST_CHILD edges
+
+    == 2. Symbol Registration ==
+
+    graph_mgr -> sym_builder : build(ast, file_path)
+    activate sym_builder
+    sym_builder -> sym_builder : walk AST for declarations
+    sym_builder -> sym_table : register(SymbolID)\n[vars · functions · params · imports]
+    note right of sym_table
+      SymbolTable maintains scoped
+      buckets: local decls, exports,
+      imports, and unresolved refs.
+    end note
+    sym_builder --> graph_mgr : populated SymbolTable
+    deactivate sym_builder
+
+    == 3. CPG Construction ==
+
+    graph_mgr -> cpg_builder : build(root_node, file_path)
+    activate cpg_builder
+
+    loop for each AST node (recursive walk)
+        cpg_builder -> cpg_builder : push/pop ScopeStack
+
+        cpg_builder -> cpg_builder : create typed knowledge node\n(FUNCTION · VARIABLE · CHUNK · MODULE\n· CONTROL_FLOW · EXPRESSION)
+
+        cpg_builder -> sym_table : scope_lookup_by_name(identifier)
+        sym_table -> sym_table : walk scope chain\n(lexical resolution)
+        sym_table --> cpg_builder : SymbolID or None
+
+        cpg_builder -> cpg_builder : create semantic relation\n(calls · assigns_to · refers_to\n· has_block · has_condition · returns)
+        note right of cpg_builder
+          ContextStack disambiguates edge type
+          for the same identifier node based on
+          enclosing context (VAR_DECL, ARGUMENTS,
+          CALL_TARGET, etc.).
+        end note
+
+        cpg_builder -> local_out : emit_node(node)
+        cpg_builder -> local_out : emit_edge(src, rel, dst)
+    end
+
+    cpg_builder --> graph_mgr : signal: construction complete
+    deactivate cpg_builder
+
+    == 4. Local Graph Assembly ==
+
+    graph_mgr -> local_out : flush()
+    local_out --> graph_mgr : {nodes[], edges[],\nunresolved_edges[], exports{}, imports{}}
+
+    note right of graph_mgr
+      unresolved_edges hold cross-file
+      references (require() calls) that
+      cannot be resolved at this stage.
+    end note
+
+    graph_mgr --> graph_mgr : local_graph ready
+
+end
+
+'─────────────── POST-PROCESSING (once, after all files) ───────────────
+
+== 5. Cross-File Aggregation ==
+
+graph_collector -> graph_collector : _create_spine()\n(directory + file hierarchy nodes)
+graph_collector -> graph_collector : _create_indexes()\n(module index · export index)
+graph_collector -> graph_collector : _resolve_cross_file_edges()\n(match unresolved refs → export index)
+graph_collector -> graph_collector : _compute_graph_metrics()\n(project-level · per-function · per-chunk)
+
+== 6. Export & Validation ==
+
+graph_collector -> exporter : export_cpg_v1(project_id, merged_graph)
+exporter -> exporter : map internal types → CPG v1 standard\nprefix IDs: "{project_id}:{node_key}"
+exporter -> exporter : validate against cpg.export.schema.json
+exporter --> graph_collector : cpg_v1 dict
+
+@enduml

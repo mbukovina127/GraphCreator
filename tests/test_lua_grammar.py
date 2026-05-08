@@ -22,10 +22,11 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from code_analyzer.parse_code import ParallelASTManager
-from ray_implementation import SymbolBuilder, CPGBuilder, LocalOutputBuilder, SymbolTable
-from ray_implementation.managers.graph_manager import GraphManager
-from ray_implementation.csv_graph_exporter import export_to_gephi_csv
+from parser import ParallelASTManager
+from builders import SymbolBuilder, CPGBuilder, LocalOutputBuilder
+from structures import SymbolTable
+from managers.graph_manager import GraphManager
+from csv_graph_exporter import export_to_gephi_csv
 
 GRAMMAR_LUA = os.path.join(os.path.dirname(__file__), 'resources', 'grammar.lua')
 

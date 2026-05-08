@@ -10,10 +10,10 @@ import pytest
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from code_analyzer.parse_code import ASTManager
-from code_analyzer.ast_metrics.cycl_complexity import calculate_cyclomatic_complexity
-from code_analyzer.ast_metrics.halstead_metrics import calculate_halstead_metrics
-from code_analyzer.ast_metrics.loc import calculate_loc
+from parser import ASTManager
+from ast_metrics.cycl_complexity import calculate_cyclomatic_complexity
+from ast_metrics.halstead_metrics import calculate_halstead_metrics
+from ast_metrics.loc import calculate_loc
 
 
 # Sample Lua code for testing

@@ -5,8 +5,8 @@ from typing import Any, Dict, Optional
 
 import ray
 
-from code_analyzer.parse_code import ParallelASTManager
-from ray_implementation.structures import SymbolTable
+from parser import ParallelASTManager
+from structures import SymbolTable
 from .graph_manager import GraphManager
 
 logger = logging.getLogger(__name__)

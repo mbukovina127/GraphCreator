@@ -2,8 +2,8 @@ import csv
 from collections import Counter
 from typing import List, Dict, Any
 
-from ray_implementation import CPGBuilder
-from ray_implementation.dto.edges import Edges
+from builders.cpg import CPGBuilder
+from dto.edges import Edges
 
 # ForceAtlas 2 edge weights: structural edges pull harder, data-flow edges are softer.
 _EDGE_WEIGHTS: Dict[str, float] = {
