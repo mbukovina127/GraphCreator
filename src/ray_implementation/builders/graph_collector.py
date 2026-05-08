@@ -131,18 +131,28 @@ class GraphCollector(GraphCollectorBase):
         self._export_index: Dict[str, Dict[str, str]] = {} # "module" -> "function" -> function id
 
     def collect(self, results, root_directory: str):
+        import time
         logger.info("Starting graph collection for root_directory=%s", root_directory)
-        self._collect_local_results(results)
-        self._create_spine(root_directory)
-        self._create_indexes()
-        self._resolve_cross_file_edges()
-        self._compute_graph_metrics()
+        _t = time.perf_counter
+        t0 = _t(); self._collect_local_results(results);    collect_local_s = _t() - t0
+        t0 = _t(); self._create_spine(root_directory);      spine_s         = _t() - t0
+        t0 = _t(); self._create_indexes();                  index_s         = _t() - t0
+        t0 = _t(); self._resolve_cross_file_edges();        resolve_s       = _t() - t0
+        t0 = _t(); self._compute_graph_metrics();           metrics_s       = _t() - t0
+        t0 = _t(); self._validate_schema();                 schema_s        = _t() - t0
+        self.phase_timings = {
+            "collect_local_s": collect_local_s,
+            "spine_s":         spine_s,
+            "index_s":         index_s,
+            "resolve_s":       resolve_s,
+            "metrics_s":       metrics_s,
+            "schema_s":        schema_s,
+        }
         logger.info(
             "Graph collection complete: %d ast_nodes, %d ast_edges, %d kg_nodes, %d kg_edges",
             len(self._ast_nodes), len(self._ast_edges),
             len(self._knowledge_nodes), len(self._knowledge_edges),
         )
-        self._validate_schema()
 
     def _validate_schema(self) -> None:
         """Validate all knowledge nodes against the JSON schema. Logs warnings for violations."""
@@ -159,13 +169,18 @@ class GraphCollector(GraphCollectorBase):
 
         import random
         schema = json.loads(schema_path.read_text())
+        # Compile the validator once — jsonschema.validate() re-parses the schema
+        # on every call, which dominates runtime for large graphs.
+        validator_cls = jsonschema.validators.validator_for(schema)
+        validator = validator_cls(schema)
+
         _SAMPLE_SIZE = 200
         items = list(self._knowledge_nodes.items())
         sample = random.sample(items, min(_SAMPLE_SIZE, len(items)))
         violations = []
         for key, node in sample:
             try:
-                jsonschema.validate(node, schema)
+                validator.validate(node)
             except jsonschema.ValidationError as e:
                 violations.append(f"Node {key}: {e.message}")
 
