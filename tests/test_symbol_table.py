@@ -393,14 +393,12 @@ class TestCPGModules:
         assert len(kg_nodes_of_type(cpg, "module")) >= 1
         assert len(kg_nodes_of_type(cpg, "global_function_definition")) >= 1
 
-    @pytest.mark.xfail(reason="module_import nodes not yet implemented")
     def test_require_creates_module_import_node(self):
         _, ast, lst, cpg = build_cpg('local m = require("math.utils")')
         import_nodes = kg_nodes_of_type(cpg, "module_import")
         assert len(import_nodes) == 1
         assert import_nodes[0].get("properties", {}).get("module_path") == "math.utils"
 
-    @pytest.mark.xfail(reason="require() should not create a function_call node once step 3 is implemented")
     def test_require_does_not_create_function_call_node(self):
         _, ast, lst, cpg = build_cpg('local m = require("math.utils")')
         call_nodes = [n for n in cpg.local_builder.knowledge_nodes.values()
@@ -419,11 +417,11 @@ class TestCPGDotAccess:
         _, ast, lst, cpg = build_cpg("local t = {}\nlocal x = t.field")
         assert len(kg_nodes_of_type(cpg, "index_expression")) >= 1
 
-    def test_dot_field_access_has_refers_to_edge(self):
+    def test_dot_field_access_has_accesses_member_of_edge(self):
         _, ast, lst, cpg = build_cpg("local t = {}\nlocal x = t.field")
         index_ids = {n["_key"] for n in kg_nodes_of_type(cpg, "index_expression")}
         assert len(index_ids) >= 1
-        assert any(e["_from"] in index_ids for e in kg_edges_of_relation(cpg, "refers_to"))
+        assert any(e["_from"] in index_ids for e in kg_edges_of_relation(cpg, "accesses_member_of"))
 
     def test_dot_field_access_property_contains_field_name(self):
         _, ast, lst, cpg = build_cpg("local t = {}\nlocal x = t.field")
@@ -440,6 +438,15 @@ class TestCPGDotAccess:
     def test_chained_dot_access_creates_multiple_nodes(self):
         _, ast, lst, cpg = build_cpg("local a = t.x.y")
         assert len(kg_nodes_of_type(cpg, "index_expression")) >= 2
+
+    def test_dot_access_on_imported_module_records_name_and_field(self):
+        code = 'local m = require("math.utils")\nlocal x = m.sqrt'
+        _, ast, lst, cpg = build_cpg(code)
+        nodes = kg_nodes_of_type(cpg, "index_expression")
+        assert len(nodes) >= 1
+        props = nodes[0].get("properties", {})
+        assert props.get("name") == "m"
+        assert props.get("field") == "sqrt"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -550,19 +557,18 @@ class TestCPGBracketIndex:
         assert len(kg_nodes_of_type(cpg, "index_expression")) >= 1
 
     @pytest.mark.xfail(reason="not yet implemented")
-    def test_bracket_index_has_refers_to_edge_to_table(self):
+    def test_bracket_index_has_accesses_member_of_edge_to_table(self):
         _, ast, lst, cpg = build_cpg("local t = {}\nlocal x = t[1]")
         index_ids = {n["_key"] for n in kg_nodes_of_type(cpg, "index_expression")}
         assert len(index_ids) >= 1
-        assert any(e["_from"] in index_ids for e in kg_edges_of_relation(cpg, "refers_to"))
+        assert any(e["_from"] in index_ids for e in kg_edges_of_relation(cpg, "accesses_member_of"))
 
-    @pytest.mark.xfail(reason="not yet implemented")
     def test_bracket_index_with_variable_key(self):
         _, ast, lst, cpg = build_cpg("local x = arr[key]")
         assert len(kg_nodes_of_type(cpg, "index_expression")) >= 1
         assert "key" in cpg.unresolved_edges or "arr" in cpg.unresolved_edges
 
-    @pytest.mark.xfail(reason="not yet implemented")
+    @pytest.mark.xfail(reason="tree-sitter parses mat[i][j] as a single bracket_index_expression; nested nodes not yet supported")
     def test_chained_bracket_index_creates_multiple_nodes(self):
         _, ast, lst, cpg = build_cpg("local x = mat[i][j]")
         assert len(kg_nodes_of_type(cpg, "index_expression")) >= 2
@@ -695,21 +701,29 @@ end
         """Full-feature Lua program: exercises tables, dot access, loops, conditionals,
         literals, function calls, and return values. Exports to k_nodes.csv / k_edges.csv."""
         code = """
-local count = 0
+local utils = require("math.utils")
 
-local function add(a, b)
-    count = count + 1
-    return a + b
-end
-
-local function sum_list(list)
-    local total = 0
-    for i = 1, #list do
-        total = add(total, list[i])
-    end
-    return total
+function process(data)
+    return utils.sqrt(data)
 end
 """
+
+#         code = """
+# local count = 0
+#
+# local function add(a, b)
+#     count = count + 1
+#     return a + b
+# end
+#
+# local function sum_list(list)
+#     local total = 0
+#     for i = 1, #list do
+#         total = add(total, list[i])
+#     end
+#     return total
+# end
+# """
         _, ast, lst, cpg = build_cpg(code)
 
         export_from_builder(cpg)

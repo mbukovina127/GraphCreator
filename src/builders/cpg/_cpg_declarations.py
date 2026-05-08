@@ -76,9 +76,21 @@ class CPGDeclarationsMixin(CPGRelationsMixin):
 
             self._apply_environment_edge(k_node)
 
-            # process only the expression list skipping the assignment Force None error as
             if assignment is not None:
-                self._recurse_with_different_context(assignment, file_path, k_node["_key"], Context.VAR_DECL) #
+                # local declaration: recurse into the inner assignment_statement with VAR_DECL
+                # context so identifiers on the LHS are suppressed
+                self._recurse_with_different_context(assignment, file_path, k_node["_key"], Context.VAR_DECL)
+            elif k_type == "global_variable_declaration":
+                # global assignment: root IS the assignment_statement, so process its
+                # expression_list directly with ASSIGNMENT context to track RHS references
+                exp_list = ASTUtils.first_node_of_type(root, "expression_list")
+                if exp_list is not None:
+                    self._context_stack.push_context(k_node["_key"], Context.ASSIGNMENT)
+                    try:
+                        for exp in exp_list.children:
+                            self.build(exp, file_path)
+                    finally:
+                        self._context_stack.pop_context()
             return True
 
         handled = False

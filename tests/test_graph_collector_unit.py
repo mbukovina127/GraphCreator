@@ -534,6 +534,7 @@ def test_create_indexes_multiple_modules_and_functions(gc):
 
 def test_find_declaration_node_returns_key_when_found(gc):
     gc._knowledge_nodes["fn:1"] = {"_key": "fn:1", "file_path": "/a.lua", "properties": {"name": "process"}}
+    gc._declaration_index["/a.lua"] = {"process": "fn:1"}
     assert gc._find_declaration_node("/a.lua", "process") == "fn:1"
 
 
@@ -571,10 +572,11 @@ def test_resolve_symbol_via_imports_map(gc):
     assert result == "fn:sqrt:1"
 
 
-def test_resolve_symbol_via_global_fallback(gc):
+def test_resolve_symbol_no_match_without_imports(gc):
+    # Symbols in modules this file does NOT import are not resolved (no global fallback).
     gc._export_index = {"other.mod": {"helper": "fn:helper:1"}}
     result = gc._resolve_symbol("helper", "/a.lua", imports={})
-    assert result == "fn:helper:1"
+    assert result is None
 
 
 def test_resolve_symbol_returns_none_when_not_found(gc):
@@ -599,9 +601,10 @@ def test_resolve_symbol_import_path_exists_but_symbol_not_in_module_exports(gc):
     assert result is None
 
 
-def test_resolve_symbol_empty_imports_uses_global(gc):
+def test_resolve_symbol_empty_imports_returns_none(gc):
+    # With no imports, nothing can be resolved.
     gc._export_index = {"some.mod": {"calc": "fn:calc:1"}}
-    assert gc._resolve_symbol("calc", "/a.lua", imports={}) == "fn:calc:1"
+    assert gc._resolve_symbol("calc", "/a.lua", imports={}) is None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -621,14 +624,13 @@ def test_resolve_cross_file_edges_no_imports_no_unresolved(gc):
 
 def test_resolve_cross_file_edges_creates_imports_edge(gc):
     fp = "/a.lua"
-    # set up module in index
     gc._module_index["math.utils"] = "mod:math.utils"
-    # set up declaration node for "localUtils" in file
     gc._knowledge_nodes["decl:localUtils"] = {
         "_key": "decl:localUtils",
         "file_path": fp,
         "properties": {"name": "localUtils"},
     }
+    gc._declaration_index[fp] = {"localUtils": "decl:localUtils"}
     gc.results[fp] = {"imports": {"localUtils": "math.utils"}, "unresolved_edges": {}}
     gc._resolve_cross_file_edges()
     import_edges = [e for e in gc._knowledge_edges if e["relation"] == "imports"]
@@ -659,7 +661,7 @@ def test_resolve_cross_file_edges_unresolved_import_declaration_logs_error(gc, c
 def test_resolve_cross_file_edges_resolves_unresolved_edge(gc):
     gc._export_index = {"mymod": {"sqrt": "fn:sqrt"}}
     gc.results["/a.lua"] = {
-        "imports": {},
+        "imports": {"m": "mymod"},  # file imports mymod → enables symbol lookup
         "unresolved_edges": {
             "sqrt": [{"node_id": "call:1", "edge_type": "calls"}]
         },
@@ -688,10 +690,121 @@ def test_resolve_cross_file_edges_multiple_files(gc):
         decl_key = f"decl:{var}"
         gc._module_index[mod] = mod_key
         gc._knowledge_nodes[decl_key] = {"_key": decl_key, "file_path": fp, "properties": {"name": var}}
+        gc._declaration_index.setdefault(fp, {})[var] = decl_key
         gc.results[fp] = {"imports": {var: mod}, "unresolved_edges": {}}
     gc._resolve_cross_file_edges()
     import_edges = [e for e in gc._knowledge_edges if e["relation"] == "imports"]
     assert len(import_edges) == 2
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Section 14b — _resolve_module_field_accesses
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_resolve_symbol_only_checks_imported_modules(gc):
+    """Two modules export the same name; only the one this file imports should match."""
+    gc._export_index = {
+        "mod.a": {"foo": "fn:foo:modA"},
+        "mod.b": {"foo": "fn:foo:modB"},
+    }
+    # file imports mod.a only
+    result = gc._resolve_symbol("foo", "/a.lua", imports={"a": "mod.a"})
+    assert result == "fn:foo:modA"
+    # file imports mod.b only
+    result = gc._resolve_symbol("foo", "/a.lua", imports={"b": "mod.b"})
+    assert result == "fn:foo:modB"
+
+
+def test_find_declaration_node_populated_by_create_indexes(gc):
+    """_declaration_index is built by _create_indexes, enabling O(1) lookup."""
+    gc._knowledge_nodes["fn:1"] = {
+        "_key": "fn:1", "type": "module_import",
+        "file_path": "/a.lua", "properties": {"name": "m"},
+    }
+    gc._create_indexes()
+    assert gc._find_declaration_node("/a.lua", "m") == "fn:1"
+
+
+def test_module_field_access_resolved_to_export(gc):
+    """m.foo should get a REFERS_TO edge to the actual exported function node."""
+    # provider file defines module "net" and exports "send"
+    gc._export_index = {"net": {"send": "fn:send"}}
+    # consumer file has an index_expression for m.send where m imports "net"
+    gc._knowledge_nodes["ix:1"] = {
+        "_key": "ix:1", "type": "index_expression",
+        "file_path": "/consumer.lua",
+        "properties": {"name": "m", "field": "send"},
+    }
+    # module_import declaration for "m" → "net"
+    gc._knowledge_nodes["decl:m"] = {
+        "_key": "decl:m", "type": "module_import",
+        "file_path": "/consumer.lua",
+        "properties": {"name": "m", "module_path": "net"},
+    }
+    gc._declaration_index["/consumer.lua"] = {"m": "decl:m"}
+
+    gc._resolve_module_field_accesses()
+
+    accesses_export_edges = [e for e in gc._knowledge_edges if e["relation"] == "accesses_export"]
+    assert len(accesses_export_edges) == 1
+    assert accesses_export_edges[0]["_from"] == "ix:1"
+    assert accesses_export_edges[0]["_to"] == "fn:send"
+
+
+def test_module_field_access_no_edge_when_export_missing(gc, caplog):
+    """Accessing an unknown field logs a warning and creates no edge."""
+    import logging
+    gc._export_index = {"net": {"send": "fn:send"}}
+    gc._knowledge_nodes["ix:1"] = {
+        "_key": "ix:1", "type": "index_expression",
+        "file_path": "/a.lua",
+        "properties": {"name": "m", "field": "nonexistent"},
+    }
+    gc._knowledge_nodes["decl:m"] = {
+        "_key": "decl:m", "type": "module_import",
+        "file_path": "/a.lua",
+        "properties": {"name": "m", "module_path": "net"},
+    }
+    gc._declaration_index["/a.lua"] = {"m": "decl:m"}
+    with caplog.at_level(logging.WARNING):
+        gc._resolve_module_field_accesses()
+    assert gc._knowledge_edges == []
+    assert any("nonexistent" in r.message for r in caplog.records)
+
+
+def test_module_field_access_skipped_for_non_module_base(gc):
+    """index_expression whose base is a plain variable (not module_import) is not wired."""
+    gc._export_index = {"mod": {"foo": "fn:foo"}}
+    gc._knowledge_nodes["ix:1"] = {
+        "_key": "ix:1", "type": "index_expression",
+        "file_path": "/a.lua",
+        "properties": {"name": "t", "field": "foo"},
+    }
+    # "t" declaration is a table, not a module_import
+    gc._knowledge_nodes["decl:t"] = {
+        "_key": "decl:t", "type": "local_variable_declaration",
+        "file_path": "/a.lua",
+        "properties": {"name": "t"},
+    }
+    gc._declaration_index["/a.lua"] = {"t": "decl:t"}
+    gc._resolve_module_field_accesses()
+    assert gc._knowledge_edges == []
+
+
+def test_declaration_index_not_contaminated_by_function_call(gc):
+    """function_call nodes must not overwrite module_import in _declaration_index."""
+    gc._knowledge_nodes["decl:math"] = {
+        "_key": "decl:math", "type": "module_import",
+        "file_path": "/a.lua",
+        "properties": {"name": "math", "module_path": "math"},
+    }
+    gc._knowledge_nodes["call:math"] = {
+        "_key": "call:math", "type": "function_call",
+        "file_path": "/a.lua",
+        "properties": {"name": "math"},
+    }
+    gc._create_indexes()
+    assert gc._declaration_index.get("/a.lua", {}).get("math") == "decl:math"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
