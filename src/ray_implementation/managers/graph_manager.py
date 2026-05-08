@@ -3,6 +3,7 @@ Manager class to contain the pipeline of creating a local CPG graph from an AST
 """
 #TODO: needs rework
 import logging
+import time
 
 from tree_sitter import Tree
 
@@ -20,26 +21,28 @@ class GraphManager:
         self.knowledge_graph_builder: CPGBuilder | None = None
         self.file = ""
         self._ran = False
+        self.timings: dict = {}
 
     
     def generate_graph(self, ast: Tree, file_path: str):
         self.file = file_path
+        self.timings = {}
         wid = self._local_symbol_table.worker_id
         try:
-            logger.info(f"[graph_manager][worker_id={wid}] Inserting AST into graph...")
+            t0 = time.perf_counter()
             self.ast_inserter = ASTInserter(self.local_out_builder)
             self.ast_inserter.insert_node(ast.root_node, file=file_path)
-            logger.info(f"[graph_manager][worker_id={wid}] AST insertion complete.")
+            self.timings["ast_insert_s"] = time.perf_counter() - t0
 
-            logger.info(f"[graph_manager][worker_id={wid}] Building local symbol table...")
+            t0 = time.perf_counter()
             self.symbol_builder = SymbolBuilder(self.local_out_builder, self._local_symbol_table, file_path)
             self.symbol_builder.build(ast.root_node)
-            logger.info(f"[graph_manager][worker_id={wid}] Local symbol table built.")
+            self.timings["symbol_s"] = time.perf_counter() - t0
 
-            logger.info(f"[graph_manager][worker_id={wid}] Creating knowledge graph...")
+            t0 = time.perf_counter()
             self.knowledge_graph_builder = CPGBuilder(self.local_out_builder, self._local_symbol_table, file_path)
             self.knowledge_graph_builder.build(ast.root_node, file_path)
-            logger.info(f"[graph_manager][worker_id={wid}] Knowledge graph built.")
+            self.timings["cpg_build_s"] = time.perf_counter() - t0
         except Exception as e:
             logger.error(f"[graph_manager][worker_id={wid}] Pipeline failed for {file_path}: {e}")
             raise

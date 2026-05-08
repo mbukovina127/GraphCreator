@@ -19,11 +19,25 @@ DATASETS: Dict[str, Path] = {
     "medium": _ROOT / "tests" / "resources" / "test_lua_zipwriter.zip",
     # Drop a real Lua project ZIP here for the 'large' tier:
     "large":  _ROOT / "benchmarks" / "data" / "large.zip",
+    "kong": _ROOT / "benchmarks" / "data" / "kong.zip",
 }
 
 
 def dataset_exists(name: str) -> bool:
     return name in DATASETS and DATASETS[name].exists()
+
+
+def load_repo_directory(path: "str | Path") -> tuple[str, List[Dict]]:
+    """
+    Load a Lua project directly from a filesystem directory (no ZIP needed).
+    Returns (str(path), file_list) in the same format as extract_dataset().
+    """
+    from pathlib import Path as _Path
+    repo_path = str(_Path(path).resolve())
+    from file_system_analyzer import analyze_project_structure
+    structure = analyze_project_structure(repo_path)
+    files = [item for item in structure if item["type"] == "file"]
+    return repo_path, files
 
 
 def extract_dataset(name: str) -> tuple[str, List[Dict]]:

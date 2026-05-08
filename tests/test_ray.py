@@ -7,7 +7,7 @@ import pytest
 import ray
 
 from file_system_analyzer import analyze_project_structure
-from ray_implementation.csv_graph_exporter import export_to_gephi_csv
+from ray_implementation.csv_graph_exporter import export_to_gephi_csv, export_from_builder
 from ray_implementation.builders.graph_collector import GraphCollector
 from ray_implementation.managers.ray_orchestrator import RayOrchestrator
 
@@ -456,6 +456,130 @@ def test_graph_collector_cross_file_module_resolved(module_zip):
     assert len(import_edges) >= 1, (
         "Expected at least one 'imports' edge after cross-file resolution"
     )
+@pytest.fixture
+def leg_zip():
+    """ZIP with the leg module family: init, scanner, parser, grammar, and M."""
+    init_lua = """
+require 'leg.grammar'
+require 'leg.scanner'
+require 'leg.parser'
+
+module 'leg'
+"""
+    scanner_lua = """
+local _G = _G
+local string = string
+local assert = assert
+local pairs = pairs
+local print = print
+
+local m = require 'lpeg'
+
+module 'leg.scanner'
+
+local function apply(dst, src, minus)
+    local patt = m.P(false)
+    if type(src) == 'string' then
+        patt = m.P(src)
+    end
+    return dst
+end
+"""
+    parser_lua = """
+local _G = _G
+local string = string
+local error = error
+local require = require
+
+local m = require 'lpeg'
+
+local scanner = require 'leg.scanner'
+local grammar = require 'leg.grammar'
+
+module 'leg.parser'
+
+local listOf = grammar.listOf
+
+rules = listOf(error, require)
+
+function apply(extraRules, captures)
+    return grammar.apply(rules, extraRules, captures)
+end
+"""
+    grammar_lua = """
+local assert = assert
+local pairs = pairs
+local type = type
+
+local lpeg = require 'lpeg'
+
+local P, V = lpeg.P, lpeg.V
+
+module 'leg.grammar'
+
+function anyOf(list)
+    local patt = P(false)
+    return patt
+end
+
+function listOf(patt, sep)
+    patt, sep = P(patt), P(sep)
+    return patt * (sep * patt)^0
+end
+
+function complete(dest, orig)
+    for rule, patt in pairs(orig) do
+        if not dest[rule] then
+            dest[rule] = patt
+        end
+    end
+    return dest
+end
+
+function apply(grammar, rules, captures)
+    if rules == nil then
+        rules = {}
+    elseif type(rules) ~= 'table' then
+        rules = { rules }
+    end
+    complete(rules, grammar)
+    if type(grammar[1]) == 'string' then
+        rules[1] = lpeg.V(grammar[1])
+    end
+    if captures ~= nil then
+        assert(type(captures) == 'table', 'captures must be a table')
+    end
+    return rules
+end
+"""
+
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as f:
+        zip_path = f.name
+        with zipfile.ZipFile(zip_path, 'w') as zf:
+            zf.writestr("src/init.lua", init_lua)
+            zf.writestr("src/scanner.lua", scanner_lua)
+            zf.writestr("src/parser.lua", parser_lua)
+            zf.writestr("src/grammar.lua", grammar_lua)
+            zf.writestr("src/M.lua", m_lua)
+    yield zip_path
+    os.unlink(zip_path)
+
+
+def test_leg_graph_collection(leg_zip):
+    """leg module family: all 5 files collected, cross-file requires resolved."""
+    gc, results = _extract_and_collect(leg_zip)
+    assert len(results) == 5
+    assert len(gc._knowledge_nodes) > 0
+    module_names = {
+        n.get("properties", {}).get("module_name")
+        for n in gc._knowledge_nodes.values()
+        if n.get("type") == "module"
+    }
+    assert "leg" in module_names or any("leg" in (m or "") for m in module_names)
+    nodes = gc._knowledge_nodes.values()
+    edges = gc._knowledge_edges
+    export_to_gephi_csv(nodes, edges, "thesis_test_k_nodes.csv", "thesis_test_k_edges.csv")
+
 def test_big_repository():
     zip_path = os.path.join(os.path.dirname(__file__), "resources", "test_lua_zipwriter.zip")
     gc, _ = _extract_and_collect(zip_path)

@@ -35,13 +35,17 @@ _STYLE = {
 
 
 def _load_results(results_dir: Path) -> List[Dict]:
-    results = []
+    """Load JSONs, keeping only the latest run per (dataset, num_cpus) pair."""
+    latest: dict[tuple, Dict] = {}
     for f in sorted(results_dir.glob("*.json")):
         try:
-            results.append(json.loads(f.read_text()))
+            r = json.loads(f.read_text())
+            key = (r["dataset"], r["num_cpus"])
+            if key not in latest or r.get("timestamp", "") > latest[key].get("timestamp", ""):
+                latest[key] = r
         except Exception:
             pass
-    return results
+    return list(latest.values())
 
 
 def _group_by(results: List[Dict], key: str) -> Dict[str, List[Dict]]:
@@ -78,8 +82,8 @@ def plot_scalability(results: List[Dict]) -> Path:
 
         ax.set_xticks(x)
         ax.set_xticklabels([f"{w} CPU{'s' if w != 1 else ''}" for w in all_workers])
-        ax.set_ylabel("Total time (seconds)")
-        ax.set_title("CPG Pipeline Scalability: Time vs CPU Budget")
+        ax.set_ylabel("Celkový čas (sekundy)")
+        ax.set_title("Škálovateľnosť CPG pipeline: čas vs počet CPU")
         ax.legend()
         ax.grid(axis="y", zorder=0)
         ax.set_ylim(bottom=0)
@@ -104,7 +108,7 @@ def plot_speedup(results: List[Dict]) -> Path:
         fig, ax = plt.subplots(figsize=(8, 5))
 
         ax.plot(ideal_x, ideal_x / min(all_workers), "--", color="#999999",
-                linewidth=1.5, label="Ideal linear speedup")
+                linewidth=1.5, label="Ideálne lineárne zrýchlenie")
 
         for i, ds in enumerate(sorted(by_dataset.keys())):
             ds_results = sorted(by_dataset[ds], key=lambda r: r["num_cpus"])
@@ -119,9 +123,9 @@ def plot_speedup(results: List[Dict]) -> Path:
             ax.plot(workers, speedups, "o-", color=_PALETTE[i % len(_PALETTE)],
                     linewidth=2, markersize=7, label=ds)
 
-        ax.set_xlabel("CPU budget (num_cpus)")
-        ax.set_ylabel("Speedup factor")
-        ax.set_title("CPG Pipeline Speedup vs Ideal Linear Scaling")
+        ax.set_xlabel("Počet CPU (num_cpus)")
+        ax.set_ylabel("Faktor zrýchlenia")
+        ax.set_title("Zrýchlenie CPG pipeline vs ideálne lineárne škálovanie")
         ax.legend()
         ax.grid(zorder=0)
         ax.set_ylim(bottom=0)
@@ -152,15 +156,15 @@ def plot_throughput(results: List[Dict]) -> Path:
         x = np.arange(len(labels))
         bars = ax.bar(x, times, color=_PALETTE[:len(labels)], zorder=3)
         for bar, t in zip(bars, times):
-            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.005,
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.05,
                     f"{t:.2f}s", ha="center", va="bottom", fontsize=10)
 
+        ax.set_yscale("log")
         ax.set_xticks(x)
         ax.set_xticklabels(labels)
-        ax.set_ylabel("Total analysis time (seconds)")
-        ax.set_title("Throughput: Analysis Time per Dataset")
+        ax.set_ylabel("Celkový čas analýzy — log. mierka (sekundy)")
+        ax.set_title("Priepustnosť: čas analýzy per dataset")
         ax.grid(axis="y", zorder=0)
-        ax.set_ylim(bottom=0)
         fig.tight_layout()
 
     out = _FIGURES_DIR / "throughput.png"
@@ -201,8 +205,8 @@ def plot_graph_structure(results: List[Dict]) -> Path:
 
         ax.set_xticks(x)
         ax.set_xticklabels(datasets)
-        ax.set_ylabel("Node count")
-        ax.set_title("CPG Knowledge Graph: Node Type Breakdown per Dataset")
+        ax.set_ylabel("Počet uzlov")
+        ax.set_title("CPG znalostný graf: rozloženie typov uzlov per dataset")
         ax.legend(loc="upper left", fontsize=9)
         ax.grid(axis="y", zorder=0)
         ax.set_ylim(bottom=0)
@@ -237,13 +241,164 @@ def plot_resolution_rate(results: List[Dict]) -> Path:
 
         ax.set_yticks(y)
         ax.set_yticklabels(datasets)
-        ax.set_xlabel("Cross-file import resolution rate (%)")
-        ax.set_title("Cross-File Symbol Resolution Accuracy per Dataset")
+        ax.set_xlabel("Miera rozlíšenia medzisúborových importov (%)")
+        ax.set_title("Presnosť rozlíšenia medzisúborových symbolov per dataset")
         ax.set_xlim(0, 115)
         ax.grid(axis="x", zorder=0)
         fig.tight_layout()
 
     out = _FIGURES_DIR / "resolution_rate.png"
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    return out
+
+
+# ── Chart 6: Per-file pipeline stage breakdown ───────────────────────────────
+
+def plot_pipeline_stages(results: List[Dict]) -> Path:
+    """Stacked bar: average ms per pipeline stage (parse/AST/symbol/CPG) per dataset."""
+    by_dataset = _group_by(results, "dataset")
+    datasets = sorted(by_dataset.keys())
+
+    stages = [
+        ("avg_parse_s",      "Syntaktická analýza (tree-sitter)"),
+        ("avg_ast_insert_s", "Vkladanie AST"),
+        ("avg_symbol_s",     "Tabuľka symbolov"),
+        ("avg_cpg_build_s",  "Konštrukcia CPG"),
+    ]
+
+    ds_data = {ds: max(by_dataset[ds], key=lambda r: r["num_cpus"]) for ds in datasets}
+    datasets = [ds for ds in datasets if "avg_parse_s" in ds_data[ds]]
+    if not datasets:
+        raise ValueError("No results contain per-file stage timings — re-run benchmarks")
+
+    x = np.arange(len(datasets))
+    with plt.rc_context(_STYLE):
+        fig, ax = plt.subplots(figsize=(8, 5))
+        bottoms = np.zeros(len(datasets))
+
+        for i, (field, label) in enumerate(stages):
+            vals = np.array([ds_data[ds].get(field, 0) * 1000 for ds in datasets])
+            bars = ax.bar(x, vals, bottom=bottoms, label=label,
+                          color=_PALETTE[i % len(_PALETTE)], zorder=3)
+            for bar, v in zip(bars, vals):
+                if v > 0.5:
+                    ax.text(bar.get_x() + bar.get_width() / 2,
+                            bar.get_y() + bar.get_height() / 2,
+                            f"{v:.1f}", ha="center", va="center", fontsize=8, color="white")
+            bottoms += vals
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(datasets)
+        ax.set_ylabel("Priemerný čas na súbor (ms)")
+        ax.set_title("Rozloženie fáz pipeline na súbor")
+        ax.legend(fontsize=9)
+        ax.grid(axis="y", zorder=0)
+        ax.set_ylim(bottom=0)
+        fig.tight_layout()
+
+    out = _FIGURES_DIR / "pipeline_stages.png"
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    return out
+
+
+# ── Chart 7: GraphCollector sub-phase breakdown ──────────────────────────────
+
+def plot_collector_phases(results: List[Dict]) -> Path:
+    """Stacked bar: time per GraphCollector sub-phase per dataset."""
+    by_dataset = _group_by(results, "dataset")
+    datasets = sorted(by_dataset.keys())
+
+    phases = [
+        ("time_collect_local_s", "Ukladanie výsledkov"),
+        ("time_spine_s",         "Hierarchia súborového systému"),
+        ("time_index_s",         "Zostavenie indexu"),
+        ("time_resolve_s",       "Medzisúborové rozlíšenie"),
+        ("time_metrics_s",       "Metriky grafu"),
+        ("time_schema_s",        "Validácia schémy"),
+    ]
+
+    ds_data = {ds: max(by_dataset[ds], key=lambda r: r["num_cpus"]) for ds in datasets}
+    datasets = [ds for ds in datasets if "time_spine_s" in ds_data[ds]]
+    if not datasets:
+        raise ValueError("No results contain collector phase timings — re-run benchmarks")
+
+    x = np.arange(len(datasets))
+    with plt.rc_context(_STYLE):
+        fig, ax = plt.subplots(figsize=(8, 5))
+        bottoms = np.zeros(len(datasets))
+
+        for i, (field, label) in enumerate(phases):
+            vals = np.array([ds_data[ds].get(field, 0) for ds in datasets])
+            bars = ax.bar(x, vals, bottom=bottoms, label=label,
+                          color=_PALETTE[i % len(_PALETTE)], zorder=3)
+            for bar, v in zip(bars, vals):
+                if v > 0.002:
+                    ax.text(bar.get_x() + bar.get_width() / 2,
+                            bar.get_y() + bar.get_height() / 2,
+                            f"{v*1000:.0f}ms", ha="center", va="center", fontsize=8, color="white")
+            bottoms += vals
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(datasets)
+        ax.set_ylabel("Čas (sekundy)")
+        ax.set_title("Rozloženie fáz GraphCollector")
+        ax.legend(fontsize=9)
+        ax.grid(axis="y", zorder=0)
+        ax.set_ylim(bottom=0)
+        fig.tight_layout()
+
+    out = _FIGURES_DIR / "collector_phases.png"
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    return out
+
+
+# ── Chart 8: Ray scheduling — overhead vs work ───────────────────────────────
+
+def plot_ray_scheduling(results: List[Dict]) -> Path:
+    """Stacked bar: Ray phase split into dispatch overhead / parallel work / collection."""
+    by_dataset = _group_by(results, "dataset")
+    datasets = sorted(by_dataset.keys())
+
+    ds_data = {ds: max(by_dataset[ds], key=lambda r: r["num_cpus"]) for ds in datasets}
+    datasets = [ds for ds in datasets if "first_result_latency_s" in ds_data[ds]]
+    if not datasets:
+        raise ValueError("No results contain scheduling metrics — re-run benchmarks")
+
+    overhead = np.array([ds_data[ds]["first_result_latency_s"] for ds in datasets])
+    spread   = np.array([ds_data[ds]["task_spread_s"]           for ds in datasets])
+    collect  = np.array([ds_data[ds]["time_collect_s"]          for ds in datasets])
+
+    x = np.arange(len(datasets))
+    with plt.rc_context(_STYLE):
+        fig, ax = plt.subplots(figsize=(8, 5))
+
+        b1 = ax.bar(x, overhead, label="Réžia odoslania (latencia prvej úlohy)",
+                    color=_PALETTE[0], zorder=3)
+        b2 = ax.bar(x, spread,   bottom=overhead, label="Okno paralelnej práce",
+                    color=_PALETTE[2], zorder=3)
+        b3 = ax.bar(x, collect,  bottom=overhead + spread, label="Sekvenčné zbieranie",
+                    color=_PALETTE[3], zorder=3)
+
+        for bars, vals in [(b1, overhead), (b2, spread), (b3, collect)]:
+            for bar, v in zip(bars, vals):
+                if v > 0.05:
+                    ax.text(bar.get_x() + bar.get_width() / 2,
+                            bar.get_y() + bar.get_height() / 2,
+                            f"{v:.2f}s", ha="center", va="center", fontsize=9, color="white")
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(datasets)
+        ax.set_ylabel("Čas (sekundy)")
+        ax.set_title("Zloženie fáz Ray: réžia vs paralelná práca vs zbieranie")
+        ax.legend(fontsize=9)
+        ax.grid(axis="y", zorder=0)
+        ax.set_ylim(bottom=0)
+        fig.tight_layout()
+
+    out = _FIGURES_DIR / "ray_scheduling.png"
     fig.savefig(out, dpi=150)
     plt.close(fig)
     return out
@@ -266,6 +421,9 @@ def generate_all(results_dir: Path | None = None) -> List[Path]:
         plot_throughput,
         plot_graph_structure,
         plot_resolution_rate,
+        plot_pipeline_stages,
+        plot_collector_phases,
+        plot_ray_scheduling,
     ]
 
     paths = []
