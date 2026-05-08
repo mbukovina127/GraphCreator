@@ -16,6 +16,9 @@ class Edges(Enum):
     # Data flow
     REFERS_TO = "refers_to"
     CALLS = "calls"
+    HAS_CALLEE = "has_callee"
+    ACCESSES_MEMBER_OF = "accesses_member_of"
+    ACCESSES_EXPORT = "accesses_export"
     RETURNS = "returns"
     FLOWS_TO = "flows_to"
     INITIALIZES = "initializes"

@@ -180,31 +180,50 @@ class CPGRelationsMixin(CPGBase):
         return k_node, False
 
     def _handle_call(self, node, file_path: str) -> Tuple[Dict | None, bool]:
-        name = ASTUtils.get_text(ASTUtils.first_node_of_type(node, "identifier"))
+        callee = node.children[0]
+        is_method_call = callee.type in ("dot_index_expression", "bracket_index_expression")
+
+        if is_method_call:
+            base = callee.children[0]
+            name = ASTUtils.get_text(base) if base.type == "identifier" else (
+                ASTUtils.get_text(ASTUtils.first_node_of_type(callee, "identifier")) or ""
+            )
+        else:
+            name = ASTUtils.get_text(ASTUtils.first_node_of_type(node, "identifier"))
+
         if name == 'require':
-            return None, True # Symbol already has the import skip the traversion; FIXME to be deleted
+            # require() is handled at the variable_declaration level by _node_variable.
+            # No call-site knowledge node is created for the import mechanism itself.
+            return None, True
 
         k_node = self._create_knowledge_node(node, file_path, properties={"name": name})
 
-        definition = self._lst.scope_lookup_by_name(self._lexical_scope_stack[-1], name)
-        if definition is not None:
-            try:
-                found_node_id = self._get_nodeid_from_astid(str(definition.ast_id))
-                self._create_knowledge_edge(found_node_id, k_node["_key"], Edges.DEFINES)
-            except KeyError:
-                self._create_unresolved_edge(k_node["_key"], name, Edges.DEFINES, self._lexical_scope_stack[-1], file_path)
-                logger.info(f"Created unresolved edge (ast_id not in map)[ {k_node['_key']}, {name}]")
+        if is_method_call:
+            # callee is an index-expression (obj.method or obj[key]); wire it explicitly
+            if callee.type == "dot_index_expression":
+                callee_k, _ = self._handle_dot_index_expression(callee, file_path)
+            else:
+                callee_k, _ = self._handle_bracket_index_expression(callee, file_path)
+            if callee_k is not None:
+                self._create_knowledge_edge(k_node["_key"], callee_k["_key"], Edges.HAS_CALLEE)
         else:
-            self._create_unresolved_edge(k_node["_key"], name, Edges.DEFINES, self._lexical_scope_stack[-1], file_path)
-            logger.info(f"Created unresolved edge[ {k_node['_key']}, {name}]")
+            definition = self._lst.scope_lookup_by_name(self._lexical_scope_stack[-1], name)
+            if definition is not None:
+                try:
+                    found_node_id = self._get_nodeid_from_astid(str(definition.ast_id))
+                    self._create_knowledge_edge(found_node_id, k_node["_key"], Edges.DEFINES)
+                except KeyError:
+                    self._create_unresolved_edge(k_node["_key"], name, Edges.DEFINES, self._lexical_scope_stack[-1], file_path)
+                    logger.info(f"Created unresolved edge (ast_id not in map)[{k_node['_key']}, {name}]")
+            else:
+                self._create_unresolved_edge(k_node["_key"], name, Edges.DEFINES, self._lexical_scope_stack[-1], file_path)
+                logger.info(f"Created unresolved edge[{k_node['_key']}, {name}]")
 
-        recursive = False
         arguments = ASTUtils.first_node_of_type(node, "arguments")
         if arguments.child_count > 2:  # parentheses count as children
-            self._recurse_with_different_context(node, file_path, k_node["_key"], Context.ARGUMENTS)
-            recursive = True
+            self._recurse_with_different_context(arguments, file_path, k_node["_key"], Context.ARGUMENTS)
 
-        return k_node, recursive
+        return k_node, True
 
     def _handle_control_statement(self, node, file_path: str) -> Tuple[Dict | None, bool]:
         k_node = self._create_knowledge_node(node, file_path, properties= {"kind": node.type})
@@ -258,11 +277,11 @@ class CPGRelationsMixin(CPGBase):
         if symbol is not None:
             try:
                 found_node_id = self._get_nodeid_from_astid(str(symbol.ast_id))
-                self._create_knowledge_edge(k_node["_key"], found_node_id, Edges.REFERS_TO)
+                self._create_knowledge_edge(k_node["_key"], found_node_id, Edges.ACCESSES_MEMBER_OF)
             except KeyError:
                 logger.error(f"Symbol '{name}' not found in created knowledge nodes")
         else:
-            self._create_unresolved_edge(k_node["_key"], name, Edges.REFERS_TO,
+            self._create_unresolved_edge(k_node["_key"], name, Edges.ACCESSES_MEMBER_OF,
                                          self._lexical_scope_stack[-1], file_path)
             logger.info(f"Created unresolved edge [{k_node['_key']}, {name}]")
 
@@ -289,11 +308,11 @@ class CPGRelationsMixin(CPGBase):
         if symbol is not None:
             try:
                 found_node_id = self._get_nodeid_from_astid(str(symbol.ast_id))
-                self._create_knowledge_edge(k_node["_key"], found_node_id, Edges.REFERS_TO)
+                self._create_knowledge_edge(k_node["_key"], found_node_id, Edges.ACCESSES_MEMBER_OF)
             except KeyError:
                 logger.error(f"Symbol '{base_name}' not found in created knowledge nodes")
         else:
-            self._create_unresolved_edge(k_node["_key"], base_name, Edges.REFERS_TO, self._lexical_scope_stack[-1], file_path)
+            self._create_unresolved_edge(k_node["_key"], base_name, Edges.ACCESSES_MEMBER_OF, self._lexical_scope_stack[-1], file_path)
             logger.info(f"Created unresolved edge [{k_node['_key']}, {base_name}]")
 
         if base.type == "dot_index_expression":

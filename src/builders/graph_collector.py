@@ -17,6 +17,12 @@ from graph_metrics import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_DECLARATION_TYPES = frozenset({
+    "module_import", "module",
+    "local_variable_declaration", "global_variable_declaration",
+    "local_function_definition", "global_function_definition",
+})
+
 
 class GraphCollectorBase:
     def __init__(self):
@@ -99,10 +105,10 @@ class GraphCollectorBase:
             "_key": node_id,
             "symbol_id": symbol_id,
             "type": type,
-            "text": text if text is not None else "",
+            "text": text,
             "start_byte": start_byte,
             "end_byte": end_byte,
-            "file_path": file_path if file_path is not None else "",
+            "file_path": file_path,
             "properties": {} if properties is None else properties,
         }
 
@@ -126,9 +132,10 @@ class GraphCollector(GraphCollectorBase):
         self.results: Dict[str, Any] = {}
         self.global_symbol_table = SymbolTable("global")
 
-        self._module_index: Dict[str, str] = {} # "module" -> node_id\
+        self._module_index: Dict[str, str] = {}
         self._chunk_index: Dict[str, str] = {}
-        self._export_index: Dict[str, Dict[str, str]] = {} # "module" -> "function" -> function id
+        self._export_index: Dict[str, Dict[str, str]] = {}  # module_path → {name → node_id}
+        self._declaration_index: Dict[str, Dict[str, str]] = {}  # file_path → {name → node_id}
 
     def collect(self, results, root_directory: str):
         import time
@@ -136,15 +143,17 @@ class GraphCollector(GraphCollectorBase):
         _t = time.perf_counter
         t0 = _t(); self._collect_local_results(results);    collect_local_s = _t() - t0
         t0 = _t(); self._create_spine(root_directory);      spine_s         = _t() - t0
-        t0 = _t(); self._create_indexes();                  index_s         = _t() - t0
-        t0 = _t(); self._resolve_cross_file_edges();        resolve_s       = _t() - t0
-        t0 = _t(); self._compute_graph_metrics();           metrics_s       = _t() - t0
-        t0 = _t(); self._validate_schema();                 schema_s        = _t() - t0
+        t0 = _t(); self._create_indexes();                   index_s        = _t() - t0
+        t0 = _t(); self._resolve_cross_file_edges();         resolve_s      = _t() - t0
+        t0 = _t(); self._resolve_module_field_accesses();    field_s        = _t() - t0
+        t0 = _t(); self._compute_graph_metrics();            metrics_s      = _t() - t0
+        t0 = _t(); self._validate_schema();                  schema_s       = _t() - t0
         self.phase_timings = {
             "collect_local_s": collect_local_s,
             "spine_s":         spine_s,
             "index_s":         index_s,
             "resolve_s":       resolve_s,
+            "field_resolve_s": field_s,
             "metrics_s":       metrics_s,
             "schema_s":        schema_s,
         }
@@ -258,9 +267,20 @@ class GraphCollector(GraphCollectorBase):
                     if module_name and declaration_name:
                         self._export_index.setdefault(module_name, {})[declaration_name] = edge["_to"]
 
-        logger.info("Indexes built: %d modules, %d chunks, %d export entries",
+        # build declaration index: file_path → {name → node_id}  (only declaration nodes)
+        for node in self._knowledge_nodes.values():
+            if node.get("type") not in _DECLARATION_TYPES:
+                continue
+            props = node.get("properties", {})
+            name = props.get("name") or props.get("module_name")
+            fp = node.get("file_path", "")
+            if name and fp:
+                self._declaration_index.setdefault(fp, {})[name] = node["_key"]
+
+        logger.info("Indexes built: %d modules, %d chunks, %d export entries, %d declaration entries",
                     len(self._module_index), len(self._chunk_index),
-                    sum(len(v) for v in self._export_index.values()))
+                    sum(len(v) for v in self._export_index.values()),
+                    sum(len(v) for v in self._declaration_index.values()))
 
     def _resolve_cross_file_edges(self):
         """
@@ -312,30 +332,18 @@ class GraphCollector(GraphCollectorBase):
 
     def _resolve_symbol(self, symbol_name: str, requesting_file: str, imports: Dict[str, str]) -> Optional[str]:
         """
-        Try to find a knowledge node for symbol_name outside of requesting_file.
-        Checks module exports first (using this file's imports map), then all module exports.
+        Try to find a knowledge node for symbol_name among the modules this file explicitly imports.
+        imports: var_name → module_path  (e.g. {"m": "math.utils"})
         """
-        # check if this file imports a module that exports this symbol
-        module_path = imports.get(symbol_name)
-        if module_path:
+        for _var_name, module_path in imports.items():
             node_id = self._export_index.get(module_path, {}).get(symbol_name)
             if node_id:
                 return node_id
-
-        # fall back: check all known module exports
-        for exports in self._export_index.values():
-            if symbol_name in exports:
-                return exports[symbol_name]
-
         return None
 
     def _find_declaration_node(self, file_path: str, var_name: str) -> Optional[str]:
         """Find the knowledge node id for a declared variable in a specific file."""
-        for node in self._knowledge_nodes.values():
-            if (node.get("file_path") == file_path
-                    and node.get("properties", {}).get("name") == var_name):
-                return node["_key"]
-        return None
+        return self._declaration_index.get(file_path, {}).get(var_name)
 
     def _create_spine(self, root_directory: str):
         logger.info("Building file-system spine from %s", root_directory)
@@ -459,6 +467,7 @@ class GraphCollector(GraphCollectorBase):
                 "child_of": "AST_CHILD", "contains": "CONTAINS", "is": "CONTAINS",
                 "executes": "FLOWS_TO", "calls": "CALLS", "defines": "DEFINES",
                 "declares": "DECLARES", "refers_to": "REFERS_TO",
+                "has_callee": "CALLS", "accesses_member_of": "REFERS_TO", "accesses_export": "REFERS_TO",
                 "has_parameter": "HAS_PARAMETER", "returns": "RETURNS",
                 "has_block": "AST_CHILD", "imports": "IMPORTS",
             }
@@ -514,10 +523,49 @@ class GraphCollector(GraphCollectorBase):
             "edges": edges,
         }
 
-    def _resolve_local_graph(self, graph):
-        pass
+    def _resolve_module_field_accesses(self):
+        """
+        Wire index_expression nodes (m.foo) to the actual exported symbol node.
 
-    def _create_simple_ids(self):
-        pass
+        After _create_indexes() and _resolve_cross_file_edges() run, the graph already contains:
+          - index_expression nodes with properties {name: "m", field: "foo"}
+          - module_import nodes with properties {name: "m", module_path: "math.utils"}
+          - _export_index: {"math.utils": {"foo": node_id}}
+          - _declaration_index: {file_path: {"m": module_import_node_id}}
+
+        We traverse these to add an ACCESSES_EXPORT edge from each index_expression to its export.
+        """
+        resolved = 0
+        for node_id, node in self._knowledge_nodes.items():
+            if node.get("type") != "index_expression":
+                continue
+            base_name = node.get("properties", {}).get("name", "")
+            field_name = node.get("properties", {}).get("field", "")
+            if not base_name or not field_name:
+                continue
+
+            file_path = node.get("file_path", "")
+            decl_id = self._declaration_index.get(file_path, {}).get(base_name)
+            if decl_id is None:
+                continue
+
+            decl_node = self._knowledge_nodes.get(decl_id)
+            if decl_node is None or decl_node.get("type") != "module_import":
+                continue
+
+            module_path = decl_node.get("properties", {}).get("module_path", "")
+            export_node_id = self._export_index.get(module_path, {}).get(field_name)
+            if export_node_id is None:
+                logger.warning("Unresolved module field: %s.%s (module=%s)", base_name, field_name, module_path)
+                continue
+
+            self._add_knowledge_edge(self._create_knowledge_edge(
+                from_node_id=node_id,
+                to_node_id=export_node_id,
+                edge_type=Edges.ACCESSES_EXPORT,
+            ))
+            resolved += 1
+
+        logger.info("Module field resolution: %d edges created", resolved)
 
 
