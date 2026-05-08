@@ -8,7 +8,7 @@ instead of ArangoHandler.
 import json
 from pathlib import Path
 from typing import Optional
-from .output_builder import GraphOutputBuilder
+from .local_output_builder import LocalOutputBuilder
 
 
 def _path_to_key(path: str) -> str:
@@ -19,7 +19,7 @@ def _path_to_key(path: str) -> str:
 class ASTInserter:
     """Inserts AST nodes and file structure into the in-memory graph builder"""
 
-    def __init__(self, graph_builder: GraphOutputBuilder):
+    def __init__(self, graph_builder: LocalOutputBuilder):
         self.graph_builder = graph_builder
         self.nodes = self.graph_builder.get_collection("nodes")
         self.edges = self.graph_builder.get_collection("edges")

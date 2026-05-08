@@ -3,7 +3,7 @@ Data structure keeping track of a scope while parsing AST to a graph
 """
 from typing import List, Optional
 
-from ray_implementation.dto.context import Context
+from dto.context import Context
 
 
 class ContextStack:

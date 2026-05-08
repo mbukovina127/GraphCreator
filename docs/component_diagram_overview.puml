@@ -1,0 +1,72 @@
+@startuml GraphCreator_Overview
+!theme plain
+top to bottom direction
+
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontSize 14
+skinparam padding 10
+skinparam nodesep 45
+skinparam ranksep 55
+
+skinparam component {
+    BackgroundColor #D6EAF8
+    BorderColor #2980B9
+    FontSize 14
+}
+skinparam package {
+    BackgroundColor #EBF5FB
+    BorderColor #1A5276
+    FontSize 15
+    FontStyle bold
+}
+skinparam database {
+    BackgroundColor #FDEBD0
+    BorderColor #CA6F1E
+    FontSize 13
+}
+skinparam actor {
+    BackgroundColor #FDEDEC
+    BorderColor #C0392B
+    FontSize 14
+}
+skinparam arrow {
+    Color #2C3E50
+    FontSize 12
+}
+
+actor "SoftVis systém\n(Vydavateľ)"          as publisher
+actor "Adaptér\ngrafového úložiska"           as graphstore
+actor "Konzumenti"                            as consumers
+
+package "Dapr Sidecar\n(pub/sub + volanie služieb)" as dapr {
+    component "Správová zbernica" as msgbus
+    component "Volanie\nslužieb"  as svc_invoke
+}
+
+package "Služba GraphCreator" as gc {
+    component "HTTP vstup\n(FastAPI + DaprClient)" as entry
+    component "Analytický\npipeline"               as pipeline
+    component "Exportér + Validátor\nCPG v1"        as exporter
+}
+
+package "Úložisko schém" as schema_store {
+    database "Schémy CPG v1\n(uzol / hrana / export)" as cpg_schemas
+}
+
+
+publisher    -->  msgbus      : "publikuj úlohu\n(project_id)"
+msgbus       -->  entry       : "POST /parser-code-tasks\n(CloudEvents)"
+
+entry        -->  svc_invoke  : "HTTP invoke"
+svc_invoke   -->  graphstore  : "stiahni ZIP"
+
+entry        -->  pipeline    : "analyze(files)"
+pipeline     -->  exporter    : "zlúčený CPG graf"
+
+exporter     -->  cpg_schemas : "validuj schému"
+exporter     -->  msgbus      : "publikuj CPG dáta\n(komprimované zstd)"
+
+msgbus       -->  consumers   : "CPG v1 dáta\n+ stav spracovania"
+
+@enduml

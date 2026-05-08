@@ -8,8 +8,6 @@ actually called by CPGBase, ASTInserter, and GraphManager are kept here.
 
 from typing import Dict, List, Any, Optional
 
-from graph_builder.output_builder import CollectionProxy, EdgeCollectionProxy
-
 
 class LocalOutputBuilder:
     def __init__(self):
@@ -67,3 +65,43 @@ class LocalOutputBuilder:
             "vertices": list(self.knowledge_nodes.values()),
             "edges": self.knowledge_edges.copy()
         }
+
+
+class CollectionProxy:
+    """Proxy object that mimics ArangoDB collection interface for vertices"""
+
+    def __init__(self, storage: Dict[str, Dict[str, Any]], path_index: Dict[str, str]):
+        self._storage = storage
+        self._path_index = path_index
+
+    def insert(self, doc: Dict[str, Any]) -> str:
+        key = doc.get("_key")
+        if not key:
+            raise ValueError("Document must have _key field")
+        self._storage[key] = doc.copy()
+        if "path" in doc:
+            self._path_index[doc["path"]] = key
+        return key
+
+    def get(self, key: str) -> Optional[Dict[str, Any]]:
+        return self._storage.get(key)
+
+    def update(self, key: str, updates: Dict[str, Any]):
+        if key in self._storage:
+            self._storage[key].update(updates)
+
+    def all(self) -> List[Dict[str, Any]]:
+        return list(self._storage.values())
+
+
+class EdgeCollectionProxy:
+    """Proxy object that mimics ArangoDB collection interface for edges"""
+
+    def __init__(self, storage: List[Dict[str, Any]]):
+        self._storage = storage
+
+    def insert(self, doc: Dict[str, Any]):
+        self._storage.append(doc.copy())
+
+    def all(self) -> List[Dict[str, Any]]:
+        return self._storage.copy()

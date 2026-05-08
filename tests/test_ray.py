@@ -6,17 +6,16 @@ import zipfile
 import pytest
 import ray
 
-from file_system_analyzer import analyze_project_structure
-from ray_implementation.csv_graph_exporter import export_to_gephi_csv, export_from_builder
-from ray_implementation.builders.graph_collector import GraphCollector
-from ray_implementation.managers.ray_orchestrator import RayOrchestrator
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from code_analyzer.parse_code import ParallelASTManager
-from ray_implementation import analyze_file
-from ray_implementation.managers.graph_manager import GraphManager
-from ray_implementation.structures import SymbolTable
+from project_structure_analyzer import analyze_project_structure
+from csv_graph_exporter import export_to_gephi_csv, export_from_builder
+from builders.graph_collector import GraphCollector
+from managers.ray_orchestrator import RayOrchestrator
+from parser import ParallelASTManager
+from managers import analyze_file
+from managers.graph_manager import GraphManager
+from structures import SymbolTable
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -440,7 +439,7 @@ def test_graph_collector_export_to_gephi(sample_zip):
     gc, _ = _extract_and_collect(sample_zip)
     nodes = gc._knowledge_nodes.values()
     edges = gc._knowledge_edges
-    export_to_gephi_csv(nodes, edges, "k_nodes.csv", "k_edges.csv")
+    export_to_gephi_csv(nodes, edges, "t1_k_nodes.csv", "t1_k_edges.csv")
 
 
 def test_graph_collector_cross_file_module_resolved(module_zip):

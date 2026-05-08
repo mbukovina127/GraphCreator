@@ -214,3 +214,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+benchmarks/results
+benchmarks/figures
+benchmarks/data
+out/

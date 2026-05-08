@@ -5,12 +5,12 @@ import tempfile
 
 import pytest
 
-from ray_implementation.csv_graph_exporter import export_from_builder
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from code_analyzer.parse_code import ParallelASTManager
-from ray_implementation import SymbolBuilder, CPGBuilder, LocalOutputBuilder, SymbolTable
+from csv_graph_exporter import export_from_builder
+from parser import ParallelASTManager
+from builders import SymbolBuilder, CPGBuilder, LocalOutputBuilder
+from structures import SymbolTable
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)

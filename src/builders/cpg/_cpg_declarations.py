@@ -1,10 +1,10 @@
 import logging
 from typing import Any, Dict
 
-from code_analyzer import ast_metrics
-from ray_implementation.ast_utils import ASTUtils
-from ray_implementation.dto.edges import Edges
-from ray_implementation.structures import Context
+import ast_metrics
+from ast_utils import ASTUtils
+from dto.edges import Edges
+from structures import Context
 from ._cpg_relations import CPGRelationsMixin
 
 logging.basicConfig(level=logging.INFO)

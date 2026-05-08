@@ -2,10 +2,10 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List
 
-from ray_implementation.ast_utils import ASTUtils
-from ray_implementation.builders.local_output_builder import LocalOutputBuilder
-from ray_implementation.dto.edges import Edges
-from ray_implementation.structures import SymbolTable, ContextStack
+from ast_utils import ASTUtils
+from builders.local_output_builder import LocalOutputBuilder
+from dto.edges import Edges
+from structures import SymbolTable, ContextStack
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

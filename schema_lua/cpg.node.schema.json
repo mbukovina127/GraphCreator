@@ -1,0 +1,190 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "schema_lua/v1/cpg.node.schema.json",
+  "title": "Universal CPG Node (v1)",
+  "type": "object",
+  "required": [
+    "_key",
+    "type"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "_key": {
+      "type": "string",
+      "description": "Unique node identifier. Format: 'filename:type:counter' for CPG nodes, 'metric:kind:counter' for metric nodes, plain integer string for spine nodes."
+    },
+    "type": {
+      "type": "string",
+      "description": "Semantic node type from the Lua CPG builder.",
+      "enum": [
+        "chunk",
+        "local_function_definition",
+        "global_function_definition",
+        "local_variable_declaration",
+        "global_variable_declaration",
+        "module_import",
+        "module",
+        "identifier",
+        "index_expression",
+        "function_call",
+        "if_statement",
+        "else_statement",
+        "elseif_statement",
+        "for_statement",
+        "while_statement",
+        "repeat_statement",
+        "for_numeric_clause",
+        "for_generic_clause",
+        "block",
+        "expression_list",
+        "binary_expression",
+        "return_statement",
+        "table_constructor",
+        "literal",
+        "local_variable",
+        "directory",
+        "file",
+        "metric"
+      ]
+    },
+    "symbol_id": {
+      "type": ["integer", "string", "null"],
+      "description": "Tree-sitter AST node id of the originating node. Null for metric nodes."
+    },
+    "text": {
+      "type": "string",
+      "description": "Source text of the AST node, or empty string for metric nodes."
+    },
+    "start_byte": {
+      "type": ["integer", "null"],
+      "description": "Byte offset of the node's first character in the source file. Null for synthetic nodes (directory, file spine nodes, metric nodes)."
+    },
+    "end_byte": {
+      "type": ["integer", "null"],
+      "description": "Byte offset one past the node's last character in the source file. Null for synthetic nodes (directory, file spine nodes, metric nodes)."
+    },
+    "file_path": {
+      "type": "string",
+      "description": "Absolute or relative path of the source file this node belongs to."
+    },
+    "properties": {
+      "type": "object",
+      "description": "Type-specific metadata. Shape varies by node type.",
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Symbol name — present on functions, variables, identifiers, calls, and index_expression nodes."
+        },
+        "kind": {
+          "type": "string",
+          "description": "Sub-classification. Control structures: AST node type string (e.g. 'if_statement'). Metrics: 'function' | 'chunk' | 'project'. Literals: 'number' | 'string' | 'true' | 'false' | 'nil'."
+        },
+        "initialized": {
+          "type": "string",
+          "description": "Set to 'True' when a local_variable_declaration has an initializer expression."
+        },
+        "is_table": {
+          "type": "string",
+          "description": "Set to 'True' when a local_variable_declaration is initialized from a table constructor."
+        },
+        "module_path": {
+          "type": "string",
+          "description": "Dotted module path for module_import nodes (e.g. 'math.utils')."
+        },
+        "module_name": {
+          "type": "string",
+          "description": "The module's own declared name for module nodes."
+        },
+        "field": {
+          "type": "string",
+          "description": "For index_expression (dot access): the field name after the dot."
+        },
+        "table_keys": {
+          "type": "string",
+          "description": "Comma-separated field keys for table_constructor nodes."
+        },
+        "value": {
+          "type": "string",
+          "description": "Raw source text of a literal node."
+        },
+        "write": {
+          "type": "string",
+          "description": "Set to 'True' on identifier nodes on the left-hand side of an assignment."
+        },
+        "halstead_metrics": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Halstead complexity metrics (n1, n2, N1, N2, V, D, E, T, B)."
+        },
+        "loc": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Lines-of-code breakdown (total, blank, commented, code, comment_pct)."
+        },
+        "cyclomatic_complexity": {
+          "type": "integer",
+          "description": "McCabe cyclomatic complexity of the node's subtree."
+        },
+        "variable_metrics": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Variable usage for function nodes (local_vars_current, local_vars_nested, params)."
+        },
+        "dependency": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Inter-function dependency metrics (depends_on, depended_by arrays of node IDs)."
+        },
+        "global_var_access": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Global variable access counts (global_vars_read, global_vars_written)."
+        },
+        "statement_usage": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Statement-type frequency counts (GenericFor, NumericFor, If, Assign, LocalAssign, FunctionCall, LocalFunction, GlobalFunction)."
+        },
+        "function_counts": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Function-definition counts per chunk (total, global, local)."
+        },
+        "info_flow": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Information-flow metrics (args_in, args_out, interface_complexity)."
+        },
+        "num_files": {
+          "type": "integer",
+          "description": "Project-level metric: total number of file nodes in the graph."
+        },
+        "num_modules": {
+          "type": "integer",
+          "description": "Project-level metric: total number of module nodes in the graph."
+        },
+        "avg_functions_per_file": {
+          "type": "number",
+          "description": "Project-level metric: average function count across all chunks."
+        },
+        "max_functions_in_file": {
+          "type": "integer",
+          "description": "Project-level metric: maximum function count in any single chunk."
+        },
+        "min_functions_in_file": {
+          "type": "integer",
+          "description": "Project-level metric: minimum function count in any single chunk."
+        },
+        "avg_lines_per_function": {
+          "type": "number",
+          "description": "Project-level metric: average total LOC per function."
+        },
+        "avg_comment_pct": {
+          "type": "number",
+          "description": "Project-level metric: average comment percentage across all chunks."
+        }
+      }
+    }
+  }
+}

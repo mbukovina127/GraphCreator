@@ -1,0 +1,100 @@
+@startuml GraphCreator_Pipeline
+!theme plain
+top to bottom direction
+
+skinparam componentStyle rectangle
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontSize 13
+skinparam padding 10
+skinparam nodesep 40
+skinparam ranksep 50
+
+skinparam component {
+    BackgroundColor #D6EAF8
+    BorderColor #2980B9
+    FontSize 13
+}
+skinparam package {
+    BackgroundColor #EBF5FB
+    BorderColor #1A5276
+    FontSize 14
+    FontStyle bold
+}
+skinparam database {
+    BackgroundColor #FDEBD0
+    BorderColor #CA6F1E
+}
+skinparam arrow {
+    Color #2C3E50
+    FontSize 11
+}
+
+package "1 · Príjem" as t1 {
+    component "FastAPI\n(dapr_handler.py)"      as fastapi
+    component "Služba LuaCodeAnalyzer"          as analyzer
+}
+
+package "2 · Spracovanie súborov" as t2 {
+    component "Rozbaľovač ZIP\n(dočasný adresár)"       as zip
+    component "Analyzátor štruktúry\nprojektu"           as proj
+}
+
+package "3 · Distribuovaná syntaktická analýza  [Ray]" as t3 {
+    component "RayOrchestrator"                 as ray_orch
+    component "CGPWorker\n[Ray Actor × N]"      as cgp_worker
+    component "ParallelASTManager"              as para_ast
+}
+
+package "4 · Konštrukcia CPG (per-súbor)" as t4 {
+    component "GraphManager\n(pipeline per-súbor)"              as graph_mgr
+    component "CPGBuilder\n(Base + Relations + Declarations)"    as cpg_builder
+    component "SymbolBuilder"                                    as sym_builder
+    component "LocalOutputBuilder"                               as local_out
+}
+
+package "5 · Rozlíšenie symbolov" as t5 {
+    component "SymbolTable\n(rozsahy / exporty / importy)"  as sym_table
+    component "ContextStack"                                as ctx_stack
+    component "Rozsahový reťazec\n(lexikálne vyhľadávanie)" as scope_chain
+}
+
+package "6 · Agregácia grafu" as t6 {
+    component "GraphCollector\n(hierarchia + indexy + medzisúborové hrany\n+ metriky grafu)" as graph_collector
+}
+
+package "7 · Export a validácia" as t7 {
+    component "Exportér CPG v1"                  as cpg_exp
+    component "Validátor JSON schémy"             as schema_val
+    component "Exportér CSV\n(Gephi, voliteľný)"  as csv_exp
+}
+
+database "Schémy CPG v1" as cpg_schemas
+
+fastapi     --> analyzer       : "deleguje"
+
+analyzer    --> zip            : "rozbali projekt"
+analyzer    --> proj           : "zoznam .lua súborov"
+
+analyzer    --> ray_orch       : "distribute_work(files)"
+ray_orch    --> cgp_worker     : "analyze_file(path) × N"
+cgp_worker  --> para_ast       : "parse(file_path)"
+
+cgp_worker  --> graph_mgr      : "generate_graph()"
+graph_mgr   --> sym_builder    : "zostroj tabuľku symbolov"
+graph_mgr   --> cpg_builder    : "zostroj CPG"
+
+cpg_builder --> local_out      : "akumuluj uzly/hrany"
+cpg_builder --> sym_table      : "rozlíš identifikátory"
+cpg_builder --> ctx_stack      : "sleduj kontext prechodu"
+
+sym_builder --> sym_table      : "registruj deklarácie"
+sym_table   --> scope_chain    : "lexikálne vyhľadávanie"
+
+ray_orch    --> graph_collector : "collect(results, root_dir)"
+
+graph_collector --> cpg_exp    : "zlúčený graf → export_cpg_v1()"
+cpg_exp     --> schema_val     : "validate()"
+schema_val  --> cpg_schemas    : "číta"
+analyzer    --> csv_exp        : "(voliteľný) export Gephi"
+
+@enduml

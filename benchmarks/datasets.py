@@ -34,7 +34,7 @@ def load_repo_directory(path: "str | Path") -> tuple[str, List[Dict]]:
     """
     from pathlib import Path as _Path
     repo_path = str(_Path(path).resolve())
-    from file_system_analyzer import analyze_project_structure
+    from project_structure_analyzer import analyze_project_structure
     structure = analyze_project_structure(repo_path)
     files = [item for item in structure if item["type"] == "file"]
     return repo_path, files
@@ -60,7 +60,7 @@ def extract_dataset(name: str) -> tuple[str, List[Dict]]:
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(extract_dir)
 
-    from file_system_analyzer import analyze_project_structure
+    from project_structure_analyzer import analyze_project_structure
     structure = analyze_project_structure(extract_dir)
     files = [item for item in structure if item["type"] == "file"]
 

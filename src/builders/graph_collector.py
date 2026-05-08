@@ -6,9 +6,9 @@ import os
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 
-from ray_implementation.dto.edges import Edges
-from ray_implementation.structures import SymbolTable
-from ray_implementation.graph_metrics import (
+from dto.edges import Edges
+from structures import SymbolTable
+from graph_metrics import (
     compute_project_metrics,
     compute_dependency_metrics,
     compute_global_var_metrics,
@@ -162,7 +162,7 @@ class GraphCollector(GraphCollectorBase):
 
         import jsonschema
 
-        schema_path = Path(__file__).parents[3] / "schema_lua" / "cpg.node.schema.json"
+        schema_path = Path(__file__).parents[2] / "schema_lua" / "cpg.node.schema.json"
         if not schema_path.exists():
             logger.warning("[schema] schema file not found at %s — skipping validation", schema_path)
             return
@@ -428,6 +428,91 @@ class GraphCollector(GraphCollectorBase):
         logger.info("Collecting results for %d files", len(results))
         for result in results:
             self.results[result["file"]] = result
+
+    def export_cpg_v1(self, project_id: str) -> Dict[str, Any]:
+        """Export the merged graph in CPG v1 schema format."""
+        import datetime
+
+        processed_node_keys: set = set()
+        nodes = []
+        edges = []
+
+        def _map_type(internal_type: str) -> str:
+            mapping = {
+                "file": "FILE", "dir": "DIRECTORY",
+                "function_definition": "FUNCTION", "local_function_definition": "FUNCTION",
+                "global_function_definition": "FUNCTION",
+                "variable_declaration": "VARIABLE", "local_variable_declaration": "VARIABLE",
+                "global_variable_declaration": "VARIABLE",
+                "identifier": "IDENTIFIER",
+                "string": "LITERAL", "number": "LITERAL", "boolean": "LITERAL", "nil": "LITERAL", "literal": "LITERAL",
+                "function_call": "CALL", "if_statement": "CONTROL_STRUCTURE",
+                "while_statement": "CONTROL_STRUCTURE", "for_statement": "CONTROL_STRUCTURE",
+                "repeat_statement": "CONTROL_STRUCTURE", "block": "BLOCK",
+                "comment": "COMMENT", "module": "NAMESPACE", "chunk": "FILE",
+                "metric": "UNKNOWN", "directory": "DIRECTORY",
+            }
+            return mapping.get(internal_type, "UNKNOWN")
+
+        def _map_edge_type(relation: str) -> str:
+            mapping = {
+                "child_of": "AST_CHILD", "contains": "CONTAINS", "is": "CONTAINS",
+                "executes": "FLOWS_TO", "calls": "CALLS", "defines": "DEFINES",
+                "declares": "DECLARES", "refers_to": "REFERS_TO",
+                "has_parameter": "HAS_PARAMETER", "returns": "RETURNS",
+                "has_block": "AST_CHILD", "imports": "IMPORTS",
+            }
+            return mapping.get(relation.lower() if relation else "", "AST_CHILD")
+
+        all_nodes = list(self._ast_nodes.values()) + list(self._knowledge_nodes.values())
+        for node in all_nodes:
+            key = node["_key"]
+            if key in processed_node_keys:
+                continue
+            processed_node_keys.add(key)
+            internal_type = node.get("type", "UNKNOWN")
+            cpg_node = {
+                "id": f"{project_id}:{key}",
+                "type": _map_type(internal_type),
+                "properties": {"kind": internal_type, "language": "lua"},
+            }
+            if "text" in node:
+                cpg_node["properties"]["code"] = node["text"]
+            if "start_byte" in node and "end_byte" in node:
+                cpg_node["location"] = {
+                    "start_offset": node["start_byte"],
+                    "end_offset": node["end_byte"],
+                }
+                if node.get("file_path"):
+                    cpg_node["location"]["file"] = node["file_path"]
+            if "properties" in node and isinstance(node["properties"], dict):
+                cpg_node["properties"].update(node["properties"])
+            nodes.append(cpg_node)
+
+        all_edges = self._ast_edges + self._knowledge_edges
+        for edge in all_edges:
+            source_id = edge["_from"].split("/")[-1] if "/" in edge["_from"] else edge["_from"]
+            target_id = edge["_to"].split("/")[-1] if "/" in edge["_to"] else edge["_to"]
+            relation = edge.get("relation", "")
+            cpg_edge = {
+                "source": f"{project_id}:{source_id}",
+                "target": f"{project_id}:{target_id}",
+                "type": _map_edge_type(relation),
+                "properties": {"relation": relation},
+            }
+            edges.append(cpg_edge)
+
+        return {
+            "meta_data": {
+                "schema_version": "v1",
+                "languages": ["lua"],
+                "analysis_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "graph_id": project_id,
+                "project_id": project_id,
+            },
+            "nodes": nodes,
+            "edges": edges,
+        }
 
     def _resolve_local_graph(self, graph):
         pass

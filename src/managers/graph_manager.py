@@ -7,9 +7,9 @@ import time
 
 from tree_sitter import Tree
 
-from graph_builder import ASTInserter
-from ray_implementation.builders import SymbolBuilder, CPGBuilder, LocalOutputBuilder
-from ray_implementation.structures import SymbolTable
+from builders.ast_inserter import ASTInserter
+from builders import SymbolBuilder, CPGBuilder, LocalOutputBuilder
+from structures import SymbolTable
 
 logger = logging.getLogger(__name__)
 

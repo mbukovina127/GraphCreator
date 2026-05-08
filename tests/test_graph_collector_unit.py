@@ -2,9 +2,9 @@
 import os
 import pytest
 
-from ray_implementation.builders.graph_collector import GraphCollectorBase, GraphCollector
-from ray_implementation.dto.edges import Edges
-from ray_implementation.structures import SymbolTable
+from builders.graph_collector import GraphCollectorBase, GraphCollector
+from dto.edges import Edges
+from structures import SymbolTable
 
 
 # ──────────────────────────────────────────────────────────────────────────────
