@@ -76,10 +76,12 @@ class BenchmarkResult:
     node_type_counts: Dict[str, int]
     edge_relation_counts: Dict[str, int]
     timestamp: str = ""
+    runner: str = "ray"
 
     def save(self) -> Path:
         self.timestamp = datetime.utcnow().isoformat()
-        fname = f"{self.dataset}_cpu{self.num_cpus}_{self.timestamp[:19].replace(':', '-')}.json"
+        runner_tag = f"_{self.runner}" if self.runner != "ray" else ""
+        fname = f"{self.dataset}_cpu{self.num_cpus}{runner_tag}_{self.timestamp[:19].replace(':', '-')}.json"
         out = _RESULTS_DIR / fname
         out.write_text(json.dumps(asdict(self), indent=2))
         return out
@@ -125,6 +127,65 @@ def _edge_relation_counts(gc: GraphCollector) -> Dict[str, int]:
     return counts
 
 
+# ── analysis phase runners ───────────────────────────────────────────────────
+
+@dataclass
+class _PhaseResult:
+    results: List[Dict]
+    time_s: float
+    peak_memory_mb: float
+    tasks_submitted: int
+    first_result_latency_s: float
+    task_spread_s: float
+
+
+def _run_ray_phase(
+    files: List[Dict],
+    num_cpus: int,
+    *,
+    ray_restart: bool,
+) -> _PhaseResult:
+    """Submit all files as Ray tasks and collect results with scheduling metrics."""
+    if ray_restart:
+        if ray.is_initialized():
+            ray.shutdown()
+        ray.init(
+            num_cpus=num_cpus,
+            runtime_env={"env_vars": {"PYTHONPATH": str(_SRC)}},
+        )
+
+    orchestrator = RayOrchestrator()
+    tracemalloc.start()
+
+    t_submit = time.perf_counter()
+    futures = orchestrator.distribute_work(files)
+    tasks_submitted = len(futures)
+
+    remaining = list(futures)
+    completion_times: List[float] = []
+    while remaining:
+        done, remaining = ray.wait(remaining, num_returns=1)
+        completion_times.append(time.perf_counter() - t_submit)
+
+    time_s = time.perf_counter() - t_submit
+    _, peak_traced = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    results = [r for r in ray.get(futures) if r is not None]
+
+    if ray_restart:
+        ray.shutdown()
+
+    return _PhaseResult(
+        results=results,
+        time_s=round(time_s, 4),
+        peak_memory_mb=round(peak_traced / 1024 / 1024, 2),
+        tasks_submitted=tasks_submitted,
+        first_result_latency_s=round(completion_times[0], 4) if completion_times else 0.0,
+        task_spread_s=round(completion_times[-1] - completion_times[0], 4) if len(completion_times) > 1 else 0.0,
+    )
+
+
 # ── core benchmark function ──────────────────────────────────────────────────
 
 def run_benchmark_on_dir(
@@ -138,87 +199,48 @@ def run_benchmark_on_dir(
     """
     Run the full CPG pipeline on an already-extracted directory.
 
-    Separates Ray analysis (Phase 1) from GraphCollector merge (Phase 2).
+    Phase 1: distributed analysis via Ray workers.
+    Phase 2: GraphCollector merge (sequential, after all Ray tasks complete).
     Called by run_benchmark() and runner_repos.py.
-
-    ray_restart=False skips the Ray shutdown/init cycle — use when the
-    caller manages Ray lifetime across many consecutive runs.
     """
-    n_files = len(files)
-
     proc = psutil.Process(os.getpid())
     rss_before = proc.memory_info().rss
 
-    if ray_restart:
-        if ray.is_initialized():
-            ray.shutdown()
-        ray.init(
-            num_cpus=num_cpus,
-            runtime_env={"env_vars": {"PYTHONPATH": str(_SRC)}},
-        )
+    phase = _run_ray_phase(files, num_cpus, ray_restart=ray_restart)
 
-    orchestrator = RayOrchestrator()
-    tracemalloc.start()
-
-    # ── Phase 1: Ray analysis with scheduling metrics ────────────────────────
-    t_submit = time.perf_counter()
-    futures = orchestrator.distribute_work(files)
-    tasks_submitted = len(futures)
-
-    remaining = list(futures)
-    completion_times: List[float] = []
-    while remaining:
-        done, remaining = ray.wait(remaining, num_returns=1)
-        completion_times.append(time.perf_counter() - t_submit)
-
-    t1 = time.perf_counter()
-    _, peak_traced = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
-    time_ray = t1 - t_submit
-
-    results = ray.get(futures)
-
-    first_result_latency = round(completion_times[0], 4) if completion_times else 0.0
-    task_spread = round(completion_times[-1] - completion_times[0], 4) if len(completion_times) > 1 else 0.0
-
-    results = [r for r in results if r is not None]
-
-    # ── Phase 2: GraphCollector ──────────────────────────────────────────────
     gc = GraphCollector()
     t2 = time.perf_counter()
-    gc.collect(results, extract_dir)
-    t3 = time.perf_counter()
-    time_collect = t3 - t2
-
-    rss_after = proc.memory_info().rss
+    gc.collect(phase.results, extract_dir)
+    time_collect = time.perf_counter() - t2
     pt = gc.phase_timings
 
+    rss_after = proc.memory_info().rss
     resolved, unresolved = _count_resolution(gc)
     total_imports = resolved + unresolved
     resolution_rate = resolved / total_imports if total_imports > 0 else 1.0
 
-    br = BenchmarkResult(
+    return BenchmarkResult(
         dataset=dataset_name,
         num_cpus=num_cpus,
-        n_files=n_files,
-        time_ray_s=round(time_ray, 4),
+        n_files=len(files),
+        time_ray_s=phase.time_s,
         time_collect_s=round(time_collect, 4),
-        time_total_s=round(time_ray + time_collect, 4),
-        peak_memory_mb=round(peak_traced / 1024 / 1024, 2),
+        time_total_s=round(phase.time_s + time_collect, 4),
+        peak_memory_mb=phase.peak_memory_mb,
         rss_delta_mb=round((rss_after - rss_before) / 1024 / 1024, 2),
-        avg_parse_s=_avg_timing(results, "parse_s"),
-        avg_ast_insert_s=_avg_timing(results, "ast_insert_s"),
-        avg_symbol_s=_avg_timing(results, "symbol_s"),
-        avg_cpg_build_s=_avg_timing(results, "cpg_build_s"),
+        avg_parse_s=_avg_timing(phase.results, "parse_s"),
+        avg_ast_insert_s=_avg_timing(phase.results, "ast_insert_s"),
+        avg_symbol_s=_avg_timing(phase.results, "symbol_s"),
+        avg_cpg_build_s=_avg_timing(phase.results, "cpg_build_s"),
         time_collect_local_s=round(pt.get("collect_local_s", 0), 4),
         time_spine_s=round(pt.get("spine_s", 0), 4),
         time_index_s=round(pt.get("index_s", 0), 4),
         time_resolve_s=round(pt.get("resolve_s", 0), 4),
         time_metrics_s=round(pt.get("metrics_s", 0), 4),
         time_schema_s=round(pt.get("schema_s", 0), 4),
-        tasks_submitted=tasks_submitted,
-        first_result_latency_s=first_result_latency,
-        task_spread_s=task_spread,
+        tasks_submitted=phase.tasks_submitted,
+        first_result_latency_s=phase.first_result_latency_s,
+        task_spread_s=phase.task_spread_s,
         n_knowledge_nodes=len(gc._knowledge_nodes),
         n_knowledge_edges=len(gc._knowledge_edges),
         n_ast_nodes=len(gc._ast_nodes),
@@ -230,10 +252,6 @@ def run_benchmark_on_dir(
         edge_relation_counts=_edge_relation_counts(gc),
     )
 
-    if ray_restart:
-        ray.shutdown()
-    return br
-
 
 def run_benchmark(dataset: str, num_cpus: int = 4) -> BenchmarkResult:
     """Run the full CPG pipeline on a named ZIP dataset."""
@@ -243,10 +261,14 @@ def run_benchmark(dataset: str, num_cpus: int = 4) -> BenchmarkResult:
 
 # ── scalability sweep ────────────────────────────────────────────────────────
 
-def run_scalability_sweep(dataset: str, cpu_counts: List[int] = None) -> List[BenchmarkResult]:
-    """Run the same dataset with increasing CPU budgets for speedup analysis."""
+def run_scalability_sweep(
+    dataset: str,
+    cpu_counts: List[int] = None,
+) -> List[BenchmarkResult]:
+    """Run the same dataset across CPU budgets for scalability comparison."""
     if cpu_counts is None:
         cpu_counts = [1, 2, 4]
+
     results = []
     for n in cpu_counts:
         print(f"  [{dataset}] cpu={n} … ", end="", flush=True)
@@ -261,7 +283,7 @@ def run_scalability_sweep(dataset: str, cpu_counts: List[int] = None) -> List[Be
 def _print_result(br: BenchmarkResult):
     print(f"\n{'─'*55}")
     print(f"  Dataset:       {br.dataset}  ({br.n_files} files)")
-    print(f"  CPU budget:    {br.num_cpus}")
+    print(f"  CPUs:          {br.num_cpus}")
     print(f"  Ray phase:     {br.time_ray_s:.3f}s  (tasks={br.tasks_submitted}, "
           f"first={br.first_result_latency_s:.3f}s, spread={br.task_spread_s:.3f}s)")
     print(f"  Collect phase: {br.time_collect_s:.3f}s")
@@ -283,7 +305,7 @@ def main():
     parser = argparse.ArgumentParser(description="GraphCreator CPG benchmark runner")
     parser.add_argument("--dataset", choices=list(DATASETS.keys()) + ["all"], default="all")
     parser.add_argument("--cpus", nargs="+", type=int, default=[1, 2, 4],
-                        help="CPU budgets to sweep (simulates hardware parallelism)")
+                        help="CPU budgets to sweep")
     args = parser.parse_args()
 
     datasets = list(DATASETS.keys()) if args.dataset == "all" else [args.dataset]

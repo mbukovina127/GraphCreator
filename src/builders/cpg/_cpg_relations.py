@@ -117,6 +117,7 @@ class CPGRelationsMixin(CPGBase):
                     "if_statement":    Edges.EXECUTES,
                     "repeat_statement": Edges.EXECUTES,
                     "while_statement": Edges.EXECUTES,
+                    "function_call":   Edges.CALLS,
                 }.get(k_node["type"])
                 if chunk_relation is not None:
                     self._create_knowledge_edge(relevant_id, k_node["_key"], chunk_relation)
@@ -360,7 +361,7 @@ class CPGRelationsMixin(CPGBase):
                 block_node = ASTUtils.first_node_of_type(node.parent, "block")
                 symbol = self._lst.scope_lookup_by_name(block_node.id, name)
                 if symbol is not None:
-                    var_node = self._create_knowledge_node(identifier, file_path, type="local_variable")
+                    var_node = self._create_knowledge_node(identifier, file_path, type="local_variable_declaration")
                     self._create_knowledge_edge(k_node["_key"], var_node["_key"], Edges.DECLARES)
             if identifier.next_sibling is None or identifier.next_sibling.type != ",":
                 break
@@ -386,7 +387,7 @@ class CPGRelationsMixin(CPGBase):
         handler = self._relation_handlers.get(node.type)
         if handler is None:
             return False
-        logger.info(f"\tEntering handler for relation {handler.__name__}")
+        logger.debug(f"\tEntering handler for relation {handler.__name__}")
         k_node, recursive = handler(node, file_path)
         try:
             self._apply_context_edge(k_node)

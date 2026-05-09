@@ -700,30 +700,32 @@ end
     def test_complex_program_export_for_thesis(self):
         """Full-feature Lua program: exercises tables, dot access, loops, conditionals,
         literals, function calls, and return values. Exports to k_nodes.csv / k_edges.csv."""
-        code = """
-local utils = require("math.utils")
-
-function process(data)
-    return utils.sqrt(data)
-end
-"""
-
 #         code = """
-# local count = 0
+# local utils = require("math.utils")
 #
-# local function add(a, b)
-#     count = count + 1
-#     return a + b
-# end
-#
-# local function sum_list(list)
-#     local total = 0
-#     for i = 1, #list do
-#         total = add(total, list[i])
-#     end
-#     return total
+# function process(data)
+#     return utils.sqrt(data)
 # end
 # """
+
+        code = """
+local count = 0
+
+local function add(a, b)
+    count = count + 1
+    return a + b
+end
+
+add(1, 2)
+
+local function sum_list(list)
+    local total = 0
+    for i = 1, #list do
+        total = add(total, list[i])
+    end
+    return total
+end
+"""
         _, ast, lst, cpg = build_cpg(code)
 
         export_from_builder(cpg)

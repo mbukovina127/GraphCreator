@@ -1,0 +1,63 @@
+@startuml CPG_DataFlow
+' Expression resolution, member access, and data flow edges.
+!theme plain
+top to bottom direction
+hide empty members
+
+skinparam defaultFontSize 13
+skinparam padding 6
+skinparam nodesep 30
+skinparam ranksep 50
+skinparam class {
+    BackgroundColor #D6EAF8
+    BorderColor #2980B9
+}
+skinparam abstract {
+    BackgroundColor #FDFEFE
+    BorderColor #7F8C8D
+}
+'skinparam arrow { Color #2C3E50; FontSize 11 }
+
+abstract class "«function definition»\nlocal · global" as func << node >>
+
+class "function_call"    as fcall    << node >>
+class "index_expression\n(member / method access)" as idx_expr << node >>
+class "identifier"       as ident    << node >>
+class "table_constructor" as tbl_ctor << node >>
+
+abstract class "«expression»\nliteral · binary_expression\nexpression_list · function_call" as expr << node >>
+
+abstract class "«declaration»\nvar_decl · func_def · module_import" as decl << node >>
+
+class "local_variable_declaration" as lvar_d << node >>
+
+' ── Call-site resolution ──────────────────────────────
+' func --defines--> fcall means the definition resolves the call site
+func     -[#1E8449]->  fcall     : defines
+func     -[#2980B9]->  ident     : has_parameters
+
+' ── Method call ───────────────────────────────────────
+fcall    -[#8E44AD]->  idx_expr  : has_callee
+fcall    -[#8E44AD]->  expr      : has_argument
+
+' ── Member access resolution ──────────────────────────
+idx_expr -[#17A589]->  decl      : accesses_member_of
+
+' ── Cross-file export resolution (GraphCollector) ─────
+idx_expr -[#8E44AD]->  func      : accesses_export
+
+' ── Variable initialisation ───────────────────────────
+' RHS expression → variable it initializes
+expr     -[#CA6F1E]->  lvar_d    : initializes
+tbl_ctor -[#CA6F1E]->  lvar_d    : initializes
+tbl_ctor -[#17A589]->  expr      : has_field
+
+' ── Identifier resolution ─────────────────────────────
+ident    -[#E74C3C]->  decl      : refers_to
+ident    -[#E74C3C]->  ident     : assigns_to
+
+' ── Expression composition ────────────────────────────
+' child --inside_of--> container
+expr     -[#17A589]->  expr      : inside_of
+
+@enduml
