@@ -33,7 +33,7 @@ def _analyze_single(file_path: str) -> Optional[Dict[str, Any]]:
     return result
 
 
-@ray.remote
+@ray.remote(num_cpus=1)
 def analyze_file(file_path: str) -> Optional[Dict[str, Any]]:
     """Stateless Ray task: parse one Lua file and return its local CPG graphs."""
     return _analyze_single(file_path)

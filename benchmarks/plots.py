@@ -26,21 +26,22 @@ _FIGURES_DIR.mkdir(exist_ok=True)
 
 _PALETTE = ["#4472C4", "#ED7D31", "#A9D18E", "#FFC000", "#5A9BD5", "#70AD47"]
 _STYLE = {
-    "axes.facecolor": "#F2F2F2",
+    "axes.facecolor": "white",
+    "figure.facecolor": "white",
     "axes.edgecolor": "#CCCCCC",
-    "grid.color": "#FFFFFF",
-    "grid.linewidth": 1.2,
+    "grid.color": "#EEEEEE",
+    "grid.linewidth": 1.0,
     "font.size": 11,
 }
 
 
 def _load_results(results_dir: Path) -> List[Dict]:
-    """Load JSONs, keeping only the latest run per (dataset, num_cpus) pair."""
+    """Load JSONs, keeping only the latest run per (dataset, num_cpus, runner) triple."""
     latest: dict[tuple, Dict] = {}
     for f in sorted(results_dir.glob("*.json")):
         try:
             r = json.loads(f.read_text())
-            key = (r["dataset"], r["num_cpus"])
+            key = (r["dataset"], r["num_cpus"], r.get("runner", "ray"))
             if key not in latest or r.get("timestamp", "") > latest[key].get("timestamp", ""):
                 latest[key] = r
         except Exception:
@@ -58,11 +59,13 @@ def _group_by(results: List[Dict], key: str) -> Dict[str, List[Dict]]:
 # ── Chart 1: Scalability — time vs worker count ──────────────────────────────
 
 def plot_scalability(results: List[Dict]) -> Path:
-    """Bar chart: total time per worker count, one group per dataset."""
-    by_dataset = _group_by(results, "dataset")
+    """Bar chart: total time per worker count."""
+    ray_results = [r for r in results if r.get("runner", "ray") == "ray"]
+
+    by_dataset = _group_by(ray_results, "dataset")
     datasets = list(by_dataset.keys())
 
-    all_workers = sorted({r["num_cpus"] for r in results})
+    all_workers = sorted({r["num_cpus"] for r in ray_results})
     x = np.arange(len(all_workers))
     width = 0.8 / max(len(datasets), 1)
 
@@ -84,13 +87,13 @@ def plot_scalability(results: List[Dict]) -> Path:
         ax.set_xticklabels([f"{w} CPU{'s' if w != 1 else ''}" for w in all_workers])
         ax.set_ylabel("Celkový čas (sekundy)")
         ax.set_title("Škálovateľnosť CPG pipeline: čas vs počet CPU")
-        ax.legend()
+        ax.legend(fontsize=9)
         ax.grid(axis="y", zorder=0)
         ax.set_ylim(bottom=0)
         fig.tight_layout()
 
     out = _FIGURES_DIR / "scalability.png"
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=150, facecolor='white')
     plt.close(fig)
     return out
 
@@ -98,10 +101,13 @@ def plot_scalability(results: List[Dict]) -> Path:
 # ── Chart 2: Speedup curve ───────────────────────────────────────────────────
 
 def plot_speedup(results: List[Dict]) -> Path:
-    """Line chart: speedup factor vs worker count with ideal reference line."""
-    by_dataset = _group_by(results, "dataset")
+    """Line chart: Ray speedup vs worker count, baseline = Ray@1cpu."""
+    ray_results = [r for r in results if r.get("runner", "ray") == "ray"]
 
-    all_workers = sorted({r["num_cpus"] for r in results})
+    by_dataset = _group_by(ray_results, "dataset")
+    all_workers = sorted({r["num_cpus"] for r in ray_results})
+    if not all_workers:
+        all_workers = [1]
     ideal_x = np.linspace(min(all_workers), max(all_workers), 100)
 
     with plt.rc_context(_STYLE):
@@ -115,24 +121,26 @@ def plot_speedup(results: List[Dict]) -> Path:
             workers = [r["num_cpus"] for r in ds_results]
             if not workers:
                 continue
-            baseline = next((r["time_total_s"] for r in ds_results if r["num_cpus"] == min(workers)), None)
-            if baseline is None or baseline == 0:
+            baseline = next(
+                (r["time_total_s"] for r in ds_results if r["num_cpus"] == min(workers)), None
+            )
+            if not baseline:
                 continue
             speedups = [baseline / r["time_total_s"] if r["time_total_s"] > 0 else 0
                         for r in ds_results]
             ax.plot(workers, speedups, "o-", color=_PALETTE[i % len(_PALETTE)],
-                    linewidth=2, markersize=7, label=ds)
+                    linewidth=2, markersize=7, label=f"{ds} (vs Ray@{min(workers)}cpu)")
 
         ax.set_xlabel("Počet CPU (num_cpus)")
         ax.set_ylabel("Faktor zrýchlenia")
         ax.set_title("Zrýchlenie CPG pipeline vs ideálne lineárne škálovanie")
-        ax.legend()
+        ax.legend(fontsize=9)
         ax.grid(zorder=0)
         ax.set_ylim(bottom=0)
         fig.tight_layout()
 
     out = _FIGURES_DIR / "speedup.png"
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=150, facecolor='white')
     plt.close(fig)
     return out
 
@@ -140,35 +148,50 @@ def plot_speedup(results: List[Dict]) -> Path:
 # ── Chart 3: Throughput — time vs file count ─────────────────────────────────
 
 def plot_throughput(results: List[Dict]) -> Path:
-    """Bar chart: analysis time per dataset (fixed max-worker run), showing file count."""
-    # pick the run with most workers per dataset for a "full-power" view
-    by_dataset = _group_by(results, "dataset")
-    labels, times, file_counts = [], [], []
+    """Grouped bar chart: one bar per CPU variant per dataset."""
+    ray_by_ds_cpu: Dict[str, Dict[int, Dict]] = {}
+    for r in results:
+        if r.get("runner", "ray") == "ray":
+            ray_by_ds_cpu.setdefault(r["dataset"], {})[r["num_cpus"]] = r
 
-    for ds in sorted(by_dataset.keys()):
-        best = max(by_dataset[ds], key=lambda r: r["num_cpus"])
-        labels.append(f"{ds}\n({best['n_files']} files)")
-        times.append(best["time_total_s"])
-        file_counts.append(best["n_files"])
+    all_cpus = sorted({r["num_cpus"] for r in results if r.get("runner", "ray") == "ray"})
+    datasets = sorted(ray_by_ds_cpu.keys())
+
+    variants: List[tuple] = [(f"{cpu} CPU{'s' if cpu > 1 else ''}", cpu) for cpu in all_cpus]
+
+    n_v = len(variants)
+    width = 0.8 / max(n_v, 1)
+    x = np.arange(len(datasets))
 
     with plt.rc_context(_STYLE):
-        fig, ax = plt.subplots(figsize=(7, 5))
-        x = np.arange(len(labels))
-        bars = ax.bar(x, times, color=_PALETTE[:len(labels)], zorder=3)
-        for bar, t in zip(bars, times):
-            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.05,
-                    f"{t:.2f}s", ha="center", va="bottom", fontsize=10)
+        fig, ax = plt.subplots(figsize=(max(8, len(datasets) * n_v * 0.5), 5))
 
-        ax.set_yscale("log")
+        for vi, (label, cpu) in enumerate(variants):
+            offset = (vi - n_v / 2 + 0.5) * width
+            times = [ray_by_ds_cpu.get(ds, {}).get(cpu, {}).get("time_total_s", 0)
+                     for ds in datasets]
+            bars = ax.bar(x + offset, times, width * 0.9, label=label,
+                          color=_PALETTE[vi % len(_PALETTE)], zorder=3)
+            for bar, t in zip(bars, times):
+                if t > 0:
+                    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.02,
+                            f"{t:.1f}s", ha="center", va="bottom", fontsize=7, rotation=45)
+
+        n_files_per_ds = {
+            ds: next((r["n_files"] for r in ray_by_ds_cpu.get(ds, {}).values()), 0)
+            for ds in datasets
+        }
         ax.set_xticks(x)
-        ax.set_xticklabels(labels)
-        ax.set_ylabel("Celkový čas analýzy — log. mierka (sekundy)")
-        ax.set_title("Priepustnosť: čas analýzy per dataset")
+        ax.set_xticklabels([f"{ds}\n({n_files_per_ds[ds]} súborov)" for ds in datasets])
+        ax.set_ylabel("Celkový čas analýzy (sekundy)")
+        ax.set_title("Priepustnosť: čas analýzy per dataset — Ray varianty")
+        ax.legend(fontsize=9)
         ax.grid(axis="y", zorder=0)
+        ax.set_ylim(bottom=0)
         fig.tight_layout()
 
     out = _FIGURES_DIR / "throughput.png"
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=150, facecolor='white')
     plt.close(fig)
     return out
 
@@ -177,6 +200,7 @@ def plot_throughput(results: List[Dict]) -> Path:
 
 def plot_graph_structure(results: List[Dict]) -> Path:
     """Stacked bar: node type distribution per dataset."""
+    results = [r for r in results if r.get("runner", "ray") == "ray"]
     by_dataset = _group_by(results, "dataset")
     datasets = sorted(by_dataset.keys())
 
@@ -213,7 +237,7 @@ def plot_graph_structure(results: List[Dict]) -> Path:
         fig.tight_layout()
 
     out = _FIGURES_DIR / "graph_structure.png"
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=150, facecolor='white')
     plt.close(fig)
     return out
 
@@ -222,6 +246,7 @@ def plot_graph_structure(results: List[Dict]) -> Path:
 
 def plot_resolution_rate(results: List[Dict]) -> Path:
     """Horizontal bar: import resolution % per dataset."""
+    results = [r for r in results if r.get("runner", "ray") == "ray"]
     by_dataset = _group_by(results, "dataset")
     datasets = sorted(by_dataset.keys())
 
@@ -248,7 +273,7 @@ def plot_resolution_rate(results: List[Dict]) -> Path:
         fig.tight_layout()
 
     out = _FIGURES_DIR / "resolution_rate.png"
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=150, facecolor='white')
     plt.close(fig)
     return out
 
@@ -257,6 +282,7 @@ def plot_resolution_rate(results: List[Dict]) -> Path:
 
 def plot_pipeline_stages(results: List[Dict]) -> Path:
     """Stacked bar: average ms per pipeline stage (parse/AST/symbol/CPG) per dataset."""
+    results = [r for r in results if r.get("runner", "ray") == "ray"]
     by_dataset = _group_by(results, "dataset")
     datasets = sorted(by_dataset.keys())
 
@@ -298,7 +324,7 @@ def plot_pipeline_stages(results: List[Dict]) -> Path:
         fig.tight_layout()
 
     out = _FIGURES_DIR / "pipeline_stages.png"
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=150, facecolor='white')
     plt.close(fig)
     return out
 
@@ -307,6 +333,7 @@ def plot_pipeline_stages(results: List[Dict]) -> Path:
 
 def plot_collector_phases(results: List[Dict]) -> Path:
     """Stacked bar: time per GraphCollector sub-phase per dataset."""
+    results = [r for r in results if r.get("runner", "ray") == "ray"]
     by_dataset = _group_by(results, "dataset")
     datasets = sorted(by_dataset.keys())
 
@@ -350,7 +377,7 @@ def plot_collector_phases(results: List[Dict]) -> Path:
         fig.tight_layout()
 
     out = _FIGURES_DIR / "collector_phases.png"
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=150, facecolor='white')
     plt.close(fig)
     return out
 
@@ -359,6 +386,7 @@ def plot_collector_phases(results: List[Dict]) -> Path:
 
 def plot_ray_scheduling(results: List[Dict]) -> Path:
     """Stacked bar: Ray phase split into dispatch overhead / parallel work / collection."""
+    results = [r for r in results if r.get("runner", "ray") == "ray"]
     by_dataset = _group_by(results, "dataset")
     datasets = sorted(by_dataset.keys())
 
@@ -399,7 +427,61 @@ def plot_ray_scheduling(results: List[Dict]) -> Path:
         fig.tight_layout()
 
     out = _FIGURES_DIR / "ray_scheduling.png"
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=150, facecolor='white')
+    plt.close(fig)
+    return out
+
+
+# ── Chart 9: Memory consumption ─────────────────────────────────────────────
+
+def plot_memory(results: List[Dict]) -> Path:
+    """Grouped bar chart: RSS delta (MB) per CPU variant per dataset."""
+    ray_by_ds_cpu: Dict[str, Dict[int, Dict]] = {}
+    for r in results:
+        if r.get("runner", "ray") == "ray":
+            ray_by_ds_cpu.setdefault(r["dataset"], {})[r["num_cpus"]] = r
+
+    all_cpus = sorted({r["num_cpus"] for r in results if r.get("runner", "ray") == "ray"})
+    datasets = sorted(ray_by_ds_cpu.keys())
+
+    variants: List[tuple] = [(f"{cpu} CPU{'s' if cpu > 1 else ''}", cpu) for cpu in all_cpus]
+
+    if not variants or not datasets:
+        raise ValueError("No memory data to plot")
+
+    n_v = len(variants)
+    width = 0.8 / max(n_v, 1)
+    x = np.arange(len(datasets))
+
+    with plt.rc_context(_STYLE):
+        fig, ax = plt.subplots(figsize=(max(8, len(datasets) * n_v * 0.5), 5))
+
+        for vi, (label, cpu) in enumerate(variants):
+            offset = (vi - n_v / 2 + 0.5) * width
+            mems = [ray_by_ds_cpu.get(ds, {}).get(cpu, {}).get("rss_delta_mb", 0)
+                    for ds in datasets]
+            bars = ax.bar(x + offset, mems, width * 0.9, label=label,
+                          color=_PALETTE[vi % len(_PALETTE)], zorder=3)
+            for bar, m in zip(bars, mems):
+                if m > 0:
+                    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.02,
+                            f"{m:.0f}", ha="center", va="bottom", fontsize=7, rotation=45)
+
+        n_files_per_ds = {
+            ds: next((r["n_files"] for r in ray_by_ds_cpu.get(ds, {}).values()), 0)
+            for ds in datasets
+        }
+        ax.set_xticks(x)
+        ax.set_xticklabels([f"{ds}\n({n_files_per_ds[ds]} súborov)" for ds in datasets])
+        ax.set_ylabel("RSS delta (MB)")
+        ax.set_title("Spotreba pamäte: nárast RSS per dataset — všetky varianty")
+        ax.legend(fontsize=9)
+        ax.grid(axis="y", zorder=0)
+        ax.set_ylim(bottom=0)
+        fig.tight_layout()
+
+    out = _FIGURES_DIR / "memory.png"
+    fig.savefig(out, dpi=150, facecolor='white')
     plt.close(fig)
     return out
 
@@ -419,6 +501,7 @@ def generate_all(results_dir: Path | None = None) -> List[Path]:
         plot_scalability,
         plot_speedup,
         plot_throughput,
+        plot_memory,
         plot_graph_structure,
         plot_resolution_rate,
         plot_pipeline_stages,

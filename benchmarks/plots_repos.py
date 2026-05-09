@@ -1,9 +1,9 @@
 """
-Charts for per-repository benchmark results.
+Grafy pre výsledky benchmarkov per-repozitár.
 
-Usage:
-    python -m benchmarks.plots_repos                     # reads benchmarks/results/repos/
-    python -m benchmarks.plots_repos --results path/to/  # custom directory
+Použitie:
+    python -m benchmarks.plots_repos                     # číta benchmarks/results/repos/
+    python -m benchmarks.plots_repos --results cesta/    # vlastný adresár
 """
 
 from __future__ import annotations
@@ -26,23 +26,26 @@ _RESULTS_DIR = Path(__file__).parent / "results" / "repos"
 
 _PALETTE = ["#4472C4", "#ED7D31", "#A9D18E", "#FFC000", "#5A9BD5", "#70AD47"]
 _STYLE = {
-    "axes.facecolor": "#F2F2F2",
+    "axes.facecolor": "white",
+    "figure.facecolor": "white",
     "axes.edgecolor": "#CCCCCC",
-    "grid.color": "#FFFFFF",
-    "grid.linewidth": 1.2,
+    "grid.color": "#EEEEEE",
+    "grid.linewidth": 1.0,
     "font.size": 10,
 }
 
+_CPU_LABEL = staticmethod(lambda cpu: f"{cpu} CPU")
 
-# ── data loading ──────────────────────────────────────────────────────────────
+
+# ── načítanie dát ─────────────────────────────────────────────────────────────
 
 def _load_results(results_dir: Path) -> List[Dict]:
-    """Load JSONs, keeping only the latest run per (dataset, num_cpus) pair."""
+    """Načíta JSON súbory, zachová iba najnovší beh pre každú trojicu (dataset, num_cpus, runner)."""
     latest: dict[tuple, Dict] = {}
     for f in sorted(results_dir.glob("*.json")):
         try:
             r = json.loads(f.read_text())
-            key = (r["dataset"], r["num_cpus"])
+            key = (r["dataset"], r["num_cpus"], r.get("runner", "ray"))
             if key not in latest or r.get("timestamp", "") > latest[key].get("timestamp", ""):
                 latest[key] = r
         except Exception:
@@ -50,56 +53,61 @@ def _load_results(results_dir: Path) -> List[Dict]:
     return list(latest.values())
 
 
-# ── Chart 1: Time ranking (horizontal bar, top 50 slowest) ───────────────────
+# ── Graf 1: Poradie repozitárov podľa času ────────────────────────────────────
 
 def plot_repo_time_ranking(results: List[Dict], top_n: int = 50) -> Path:
-    """Horizontal bar chart of total time, sorted descending — shows the slow outliers."""
-    # Pick one entry per repo (highest CPU run = fastest, most representative)
-    by_repo: Dict[str, Dict] = {}
+    """Hustý skupinový horizontálny stĺpcový graf: každý variant CPU pre každý repozitár, zoradený podľa najpomalšieho."""
+    by_repo_cpu: Dict[str, Dict[int, Dict]] = {}
     for r in results:
-        name = r["dataset"]
-        if name not in by_repo or r["num_cpus"] > by_repo[name]["num_cpus"]:
-            by_repo[name] = r
+        by_repo_cpu.setdefault(r["dataset"], {})[r["num_cpus"]] = r
 
-    ranked = sorted(by_repo.values(), key=lambda r: r["time_total_s"], reverse=True)[:top_n]
-    if not ranked:
-        raise ValueError("No repo results to plot")
+    all_cpus = sorted({r["num_cpus"] for r in results})
 
-    labels = [r["dataset"] for r in ranked]
-    times  = [r["time_total_s"] for r in ranked]
-    files  = [r["n_files"] for r in ranked]
+    ranked_names = sorted(
+        by_repo_cpu.keys(),
+        key=lambda name: max(v["time_total_s"] for v in by_repo_cpu[name].values()),
+        reverse=True,
+    )[:top_n]
+    if not ranked_names:
+        raise ValueError("Žiadne výsledky repozitárov na zobrazenie")
 
-    fig_height = max(5, len(ranked) * 0.28)
+    n_cpus = len(all_cpus)
+    bar_h = 0.8 / n_cpus
+    fig_height = max(4, len(ranked_names) * n_cpus * 0.12)
+
     with plt.rc_context(_STYLE):
-        fig, ax = plt.subplots(figsize=(10, fig_height))
-        y = np.arange(len(ranked))
-        bars = ax.barh(y, times, color=_PALETTE[0], zorder=3)
+        fig, ax = plt.subplots(figsize=(11, fig_height))
+        y = np.arange(len(ranked_names))
 
-        for bar, t, n in zip(bars, times, files):
-            ax.text(bar.get_width() * 1.05, bar.get_y() + bar.get_height() / 2,
-                    f"{t:.2f}s  ({n}f)", va="center", fontsize=8)
+        for ci, cpu in enumerate(all_cpus):
+            offset = (ci - n_cpus / 2 + 0.5) * bar_h
+            times = [by_repo_cpu[name].get(cpu, {}).get("time_total_s", 0)
+                     for name in ranked_names]
+            ax.barh(y + offset, times, bar_h * 0.9,
+                    label=_CPU_LABEL(cpu),
+                    color=_PALETTE[ci % len(_PALETTE)], zorder=3)
 
-        ax.set_xscale("log")
         ax.set_yticks(y)
-        ax.set_yticklabels(labels, fontsize=8)
+        ax.set_yticklabels(ranked_names, fontsize=6)
         ax.invert_yaxis()
-        ax.set_xlabel("Total pipeline time — log scale (seconds)")
-        ax.set_title(f"Repository Time Ranking — Top {len(ranked)} Slowest (by max CPUs run)")
+        ax.set_xlabel("Celkový čas pipeline (sekundy)")
+        ax.set_title(f"Poradie repozitárov podľa času — Top {len(ranked_names)} (všetky varianty CPU)")
+        ax.legend(fontsize=6)
         ax.grid(axis="x", zorder=0)
         fig.tight_layout()
 
     out = _FIGURES_DIR / "repo_time_ranking.png"
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=150, facecolor='white')
     plt.close(fig)
     return out
 
 
-# ── Chart 2: Scatter — file count vs total time ───────────────────────────────
+# ── Graf 2: Rozptylový diagram — počet súborov vs celkový čas ─────────────────
 
 def plot_repo_scatter(results: List[Dict]) -> Path:
     """
-    Scatter of file count vs total time with a linear regression line.
-    Reveals whether the pipeline scales linearly with file count and highlights outliers.
+    Rozptylový diagram: počet súborov vs celkový čas s mocninovým fitom.
+    Zobrazuje, či pipeline škáluje lineárne s počtom súborov, a zvýrazňuje odľahlé hodnoty.
     """
     by_repo: Dict[str, Dict] = {}
     for r in results:
@@ -108,13 +116,12 @@ def plot_repo_scatter(results: List[Dict]) -> Path:
             by_repo[name] = r
 
     if not by_repo:
-        raise ValueError("No repo results to plot")
+        raise ValueError("Žiadne výsledky repozitárov na zobrazenie")
 
-    names  = list(by_repo.keys())
-    xs = np.array([by_repo[n]["n_files"]      for n in names], dtype=float)
-    ys = np.array([by_repo[n]["time_total_s"]  for n in names], dtype=float)
+    names = list(by_repo.keys())
+    xs = np.array([by_repo[n]["n_files"]     for n in names], dtype=float)
+    ys = np.array([by_repo[n]["time_total_s"] for n in names], dtype=float)
 
-    # Filter out zeros before taking log
     mask = (xs > 0) & (ys > 0)
     xs, ys, names = xs[mask], ys[mask], [n for n, m in zip(names, mask) if m]
 
@@ -122,148 +129,289 @@ def plot_repo_scatter(results: List[Dict]) -> Path:
         fig, ax = plt.subplots(figsize=(9, 6))
         ax.scatter(xs, ys, color=_PALETTE[0], alpha=0.65, s=40, zorder=3)
 
-        # Power-law fit in log-log space: log(y) = b*log(x) + log(a)  →  y = a * x^b
-        # slope b ≈ 1 means linear scaling; b > 1 is super-linear.
         if len(xs) > 1:
             log_coeffs = np.polyfit(np.log10(xs), np.log10(ys), 1)
             b, log_a = log_coeffs
-            x_line = np.logspace(np.log10(xs.min()), np.log10(xs.max()), 200)
+            x_line = np.linspace(xs.min(), xs.max(), 200)
             ax.plot(x_line, 10 ** log_a * x_line ** b, "--", color="#CC3333",
-                    linewidth=1.5, label=f"Power-law fit  y ∝ x^{b:.2f}")
+                    linewidth=1.5, label=f"Mocninový fit  y ∝ x^{b:.2f}")
 
-        # label the top-5 slowest
         top5_idx = np.argsort(ys)[-5:]
         for i in top5_idx:
             ax.annotate(names[i], (xs[i], ys[i]),
                         textcoords="offset points", xytext=(5, 3), fontsize=7)
 
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.set_xlabel("File count (.lua files) — log scale")
-        ax.set_ylabel("Total pipeline time — log scale (seconds)")
-        ax.set_title("Repository Scale: File Count vs Pipeline Time (log-log)")
+        ax.set_xlabel("Počet súborov (.lua)")
+        ax.set_ylabel("Celkový čas pipeline (sekundy)")
+        ax.set_title("Škálovanie repozitárov: počet súborov vs čas pipeline")
         ax.legend(fontsize=9)
-        ax.grid(zorder=0, which="both", alpha=0.5)
+        ax.grid(zorder=0, alpha=0.5)
         fig.tight_layout()
 
     out = _FIGURES_DIR / "repo_scatter.png"
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=150, facecolor='white')
     plt.close(fig)
     return out
 
 
-# ── Chart 3: Phase breakdown (Ray vs Collect) for top repos ──────────────────
+# ── Graf 3: Rozklad fáz (Ray vs Zbieranie) pre top repozitáre ────────────────
 
 def plot_repo_phase_breakdown(results: List[Dict], top_n: int = 30) -> Path:
     """
-    Stacked horizontal bar showing Ray analysis vs GraphCollector collect time
-    for the top N slowest repos. Reveals whether the bottleneck is parallel work
-    or sequential merging.
+    Hustý vrstvený horizontálny stĺpcový graf: čas Ray analýzy vs čas zbierania GraphCollector,
+    jedna skupina stĺpcov pre každý variant CPU pre každý repozitár.
     """
-    by_repo: Dict[str, Dict] = {}
+    by_repo_cpu: Dict[str, Dict[int, Dict]] = {}
     for r in results:
-        name = r["dataset"]
-        if name not in by_repo or r["num_cpus"] > by_repo[name]["num_cpus"]:
-            by_repo[name] = r
+        by_repo_cpu.setdefault(r["dataset"], {})[r["num_cpus"]] = r
 
-    ranked = sorted(by_repo.values(), key=lambda r: r["time_total_s"], reverse=True)[:top_n]
-    if not ranked:
-        raise ValueError("No repo results to plot")
+    all_cpus = sorted({r["num_cpus"] for r in results})
 
-    labels  = [r["dataset"]      for r in ranked]
-    ray_t   = np.array([r["time_ray_s"]     for r in ranked])
-    coll_t  = np.array([r["time_collect_s"] for r in ranked])
+    ranked_names = sorted(
+        by_repo_cpu.keys(),
+        key=lambda name: max(v["time_total_s"] for v in by_repo_cpu[name].values()),
+        reverse=True,
+    )[:top_n]
+    if not ranked_names:
+        raise ValueError("Žiadne výsledky repozitárov na zobrazenie")
 
-    fig_height = max(5, len(ranked) * 0.28)
+    n_cpus = len(all_cpus)
+    bar_h = 0.8 / n_cpus
+    fig_height = max(4, len(ranked_names) * n_cpus * 0.12)
+
     with plt.rc_context(_STYLE):
-        fig, ax = plt.subplots(figsize=(10, fig_height))
-        y = np.arange(len(ranked))
+        fig, ax = plt.subplots(figsize=(11, fig_height))
+        y = np.arange(len(ranked_names))
 
-        b1 = ax.barh(y, ray_t,  color=_PALETTE[0], label="Ray analysis",   zorder=3)
-        b2 = ax.barh(y, coll_t, left=ray_t, color=_PALETTE[1], label="GraphCollector", zorder=3)
-
-        for bars, vals in [(b1, ray_t), (b2, coll_t)]:
-            for bar, v in zip(bars, vals):
-                if v > 0.1:
-                    ax.text(bar.get_x() + bar.get_width() / 2,
-                            bar.get_y() + bar.get_height() / 2,
-                            f"{v:.2f}s", ha="center", va="center", fontsize=7, color="white")
+        for ci, cpu in enumerate(all_cpus):
+            offset = (ci - n_cpus / 2 + 0.5) * bar_h
+            ray_t  = np.array([by_repo_cpu[n].get(cpu, {}).get("time_ray_s", 0)
+                                for n in ranked_names])
+            coll_t = np.array([by_repo_cpu[n].get(cpu, {}).get("time_collect_s", 0)
+                                for n in ranked_names])
+            lbl = _CPU_LABEL(cpu)
+            ax.barh(y + offset, ray_t, bar_h * 0.9,
+                    label=f"{lbl} — analýza", color=_PALETTE[ci % len(_PALETTE)], zorder=3)
+            ax.barh(y + offset, coll_t, bar_h * 0.9, left=ray_t,
+                    label=f"{lbl} — zbieranie",
+                    color=_PALETTE[(ci + 2) % len(_PALETTE)], alpha=0.6, zorder=3)
 
         ax.set_yticks(y)
-        ax.set_yticklabels(labels, fontsize=8)
+        ax.set_yticklabels(ranked_names, fontsize=6)
         ax.invert_yaxis()
-        ax.set_xlabel("Time (seconds)")
-        ax.set_title(f"Ray vs Collect Phase — Top {len(ranked)} Repos by Total Time")
-        ax.legend(fontsize=9)
+        ax.set_xlabel("Čas (sekundy)")
+        ax.set_title(f"Fáza Ray vs Zbieranie — Top {len(ranked_names)} repozitárov (všetky varianty CPU)")
+        ax.legend(fontsize=6, loc="lower right")
         ax.grid(axis="x", zorder=0)
         fig.tight_layout()
 
     out = _FIGURES_DIR / "repo_phase_breakdown.png"
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=150, facecolor='white')
     plt.close(fig)
     return out
 
 
-# ── Chart 4: GraphCollector sub-phase detail for top repos ───────────────────
+# ── Graf 4: Detail podfáz GraphCollector pre top repozitáre ──────────────────
 
 def plot_repo_collector_phases(results: List[Dict], top_n: int = 30) -> Path:
     """
-    Stacked horizontal bar of GraphCollector sub-phases for top N repos.
-    Shows which internal phase (spine, resolve, schema, metrics…) dominates.
+    Hustý vrstvený horizontálny stĺpcový graf podfáz GraphCollector,
+    jedna skupina stĺpcov pre každý variant CPU pre každý repozitár.
     """
-    by_repo: Dict[str, Dict] = {}
+    by_repo_cpu: Dict[str, Dict[int, Dict]] = {}
     for r in results:
-        name = r["dataset"]
-        if name not in by_repo or r["num_cpus"] > by_repo[name]["num_cpus"]:
-            by_repo[name] = r
+        by_repo_cpu.setdefault(r["dataset"], {})[r["num_cpus"]] = r
 
-    ranked = sorted(by_repo.values(), key=lambda r: r["time_total_s"], reverse=True)[:top_n]
-    if not ranked:
-        raise ValueError("No repo results to plot")
+    all_cpus = sorted({r["num_cpus"] for r in results})
+
+    ranked_names = sorted(
+        by_repo_cpu.keys(),
+        key=lambda name: max(v["time_total_s"] for v in by_repo_cpu[name].values()),
+        reverse=True,
+    )[:top_n]
+    if not ranked_names:
+        raise ValueError("Žiadne výsledky repozitárov na zobrazenie")
 
     phases = [
-        ("time_collect_local_s", "Store results"),
-        ("time_spine_s",         "Filesystem spine"),
-        ("time_index_s",         "Index build"),
-        ("time_resolve_s",       "Cross-file resolve"),
-        ("time_metrics_s",       "Graph metrics"),
-        ("time_schema_s",        "Schema validation"),
+        ("time_collect_local_s", "Ukladanie výsledkov"),
+        ("time_spine_s",         "Hierarchia súborového systému"),
+        ("time_index_s",         "Zostavenie indexu"),
+        ("time_resolve_s",       "Medzisúborové rozlíšenie"),
+        ("time_metrics_s",       "Metriky grafu"),
+        ("time_schema_s",        "Validácia schémy"),
     ]
 
-    labels = [r["dataset"] for r in ranked]
-    fig_height = max(5, len(ranked) * 0.28)
-    with plt.rc_context(_STYLE):
-        fig, ax = plt.subplots(figsize=(11, fig_height))
-        y = np.arange(len(ranked))
-        lefts = np.zeros(len(ranked))
+    n_cpus = len(all_cpus)
+    bar_h = 0.8 / n_cpus
+    fig_height = max(4, len(ranked_names) * n_cpus * 0.12)
 
-        for i, (field, label) in enumerate(phases):
-            vals = np.array([r.get(field, 0) for r in ranked])
-            bars = ax.barh(y, vals, left=lefts,
-                           color=_PALETTE[i % len(_PALETTE)], label=label, zorder=3)
-            for bar, v in zip(bars, vals):
-                if v > 0.05:
-                    ax.text(bar.get_x() + bar.get_width() / 2,
-                            bar.get_y() + bar.get_height() / 2,
-                            f"{v:.2f}s", ha="center", va="center", fontsize=7, color="white")
-            lefts += vals
+    with plt.rc_context(_STYLE):
+        fig, ax = plt.subplots(figsize=(12, fig_height))
+        y = np.arange(len(ranked_names))
+
+        for ci, cpu in enumerate(all_cpus):
+            offset = (ci - n_cpus / 2 + 0.5) * bar_h
+            lefts = np.zeros(len(ranked_names))
+            for pi, (field, label) in enumerate(phases):
+                vals = np.array([by_repo_cpu[n].get(cpu, {}).get(field, 0)
+                                 for n in ranked_names])
+                lbl = f"{_CPU_LABEL(cpu)} — {label}" if ci == 0 else ""
+                ax.barh(y + offset, vals, bar_h * 0.9, left=lefts,
+                        color=_PALETTE[pi % len(_PALETTE)],
+                        label=lbl if lbl else None, zorder=3)
+                lefts += vals
 
         ax.set_yticks(y)
-        ax.set_yticklabels(labels, fontsize=8)
+        ax.set_yticklabels(ranked_names, fontsize=6)
         ax.invert_yaxis()
-        ax.set_xlabel("Time (seconds)")
-        ax.set_title(f"GraphCollector Sub-Phase Breakdown — Top {len(ranked)} Repos")
-        ax.legend(fontsize=8, loc="lower right")
+        ax.set_xlabel("Čas (sekundy)")
+        ax.set_title(f"Podfázy GraphCollector — Top {len(ranked_names)} repozitárov (všetky varianty CPU)")
+        ax.legend(fontsize=6, loc="lower right")
         ax.grid(axis="x", zorder=0)
         fig.tight_layout()
 
     out = _FIGURES_DIR / "repo_collector_phases.png"
-    fig.savefig(out, dpi=150)
+    fig.savefig(out, dpi=150, facecolor='white')
     plt.close(fig)
     return out
 
 
-# ── generate all ─────────────────────────────────────────────────────────────
+# ── Graf 5: Poradie repozitárov podľa pamäte ─────────────────────────────────
+
+def plot_repo_memory(results: List[Dict], top_n: int = 50) -> Path:
+    """
+    Hustý skupinový horizontálny stĺpcový graf: nárast RSS pamäte (MB) pre každý variant CPU,
+    zoradený podľa najväčšej spotreby pamäte.
+    """
+    by_repo_cpu: Dict[str, Dict[int, Dict]] = {}
+    for r in results:
+        by_repo_cpu.setdefault(r["dataset"], {})[r["num_cpus"]] = r
+
+    all_cpus = sorted({r["num_cpus"] for r in results})
+
+    ranked_names = sorted(
+        by_repo_cpu.keys(),
+        key=lambda name: max(v.get("rss_delta_mb", 0) for v in by_repo_cpu[name].values()),
+        reverse=True,
+    )[:top_n]
+    if not ranked_names:
+        raise ValueError("Žiadne výsledky repozitárov na zobrazenie")
+
+    n_cpus = len(all_cpus)
+    bar_h = 0.8 / n_cpus
+    fig_height = max(4, len(ranked_names) * n_cpus * 0.12)
+
+    with plt.rc_context(_STYLE):
+        fig, ax = plt.subplots(figsize=(11, fig_height))
+        y = np.arange(len(ranked_names))
+
+        for ci, cpu in enumerate(all_cpus):
+            offset = (ci - n_cpus / 2 + 0.5) * bar_h
+            mems = [by_repo_cpu[name].get(cpu, {}).get("rss_delta_mb", 0)
+                    for name in ranked_names]
+            ax.barh(y + offset, mems, bar_h * 0.9,
+                    label=_CPU_LABEL(cpu),
+                    color=_PALETTE[ci % len(_PALETTE)], zorder=3)
+
+        ax.set_yticks(y)
+        ax.set_yticklabels(ranked_names, fontsize=6)
+        ax.invert_yaxis()
+        ax.set_xlabel("Nárast RSS pamäte (MB)")
+        ax.set_title(f"Poradie repozitárov podľa pamäte — Top {len(ranked_names)} (všetky varianty CPU)")
+        ax.legend(fontsize=6)
+        ax.grid(axis="x", zorder=0)
+        fig.tight_layout()
+
+    out = _FIGURES_DIR / "repo_memory.png"
+    fig.savefig(out, dpi=150, facecolor='white')
+    plt.close(fig)
+    return out
+
+
+# ── Graf 6: Rozdelenie časov spracovania (Gaussov + lognormálny fit) ──────────
+
+def plot_repo_distribution(results: List[Dict]) -> Path:
+    """
+    Dvojpanelový graf rozdelenia časov spracovania repozitárov.
+
+    Ľavý panel  — lineárna os s Gaussovým fitom. Pravostranné skreslenie je viditeľné
+                  hneď: krivka zasahuje do záporných hodnôt a nehodí sa na dlhý chvost.
+    Pravý panel — logaritmická os s lognormálnym fitom. V log-priestore sú dáta takmer
+                  symetrické (šikmosť ≈ 0.14), čo potvrdzuje lognormálne rozdelenie —
+                  typické pre metriky kódových repozitárov.
+
+    Prerušované zvislé čiary označujú geometrický priemer (= medián lognormálneho rozdelenia).
+    """
+    by_repo_cpu: Dict[str, Dict[int, Dict]] = {}
+    for r in results:
+        by_repo_cpu.setdefault(r["dataset"], {})[r["num_cpus"]] = r
+
+    all_cpus = sorted({r["num_cpus"] for r in results})
+
+    with plt.rc_context(_STYLE):
+        fig, (ax_raw, ax_log) = plt.subplots(1, 2, figsize=(14, 5))
+
+        for ci, cpu in enumerate(all_cpus):
+            times = np.array([
+                by_repo_cpu[name][cpu]["time_total_s"]
+                for name in by_repo_cpu
+                if cpu in by_repo_cpu[name]
+                and by_repo_cpu[name][cpu].get("time_total_s", 0) > 0
+            ])
+            if len(times) < 5:
+                continue
+
+            color = _PALETTE[ci % len(_PALETTE)]
+
+            # ── Ľavý panel: lineárna os, Gaussov fit ──────────────────────────
+            mu_raw, sig_raw = float(times.mean()), float(times.std())
+            skew_raw = float((((times - mu_raw) / sig_raw) ** 3).mean())
+            ax_raw.hist(times, bins=25, density=True, alpha=0.35, color=color,
+                        label=f"{_CPU_LABEL(cpu)} (n={len(times)}, μ={mu_raw:.2f}s, σ={sig_raw:.2f}s, šikmosť={skew_raw:.2f})")
+            x_raw = np.linspace(max(0, mu_raw - 4 * sig_raw), mu_raw + 4 * sig_raw, 300)
+            pdf_raw = ((1 / (sig_raw * np.sqrt(2 * np.pi)))
+                       * np.exp(-0.5 * ((x_raw - mu_raw) / sig_raw) ** 2))
+            ax_raw.plot(x_raw, pdf_raw, color=color, linewidth=2)
+            ax_raw.axvline(mu_raw, color=color, linestyle="--", linewidth=1.2, alpha=0.8)
+
+            # ── Pravý panel: logaritmická os, lognormálny fit ──────────────────
+            log_t = np.log(times)
+            mu_log, sig_log = float(log_t.mean()), float(log_t.std())
+            skew_log = float((((log_t - mu_log) / sig_log) ** 3).mean())
+            geo_mean = float(np.exp(mu_log))
+            bins_log = np.logspace(np.log10(times.min()), np.log10(times.max()), 25)
+            ax_log.hist(times, bins=bins_log, density=True, alpha=0.35, color=color,
+                        label=f"{_CPU_LABEL(cpu)} (n={len(times)}, geom. priemer={geo_mean:.3f}s, σ_log={sig_log:.2f}, šikmosť={skew_log:.2f})")
+            x_log = np.logspace(np.log10(times.min()), np.log10(times.max()), 400)
+            pdf_log = ((1 / (x_log * sig_log * np.sqrt(2 * np.pi)))
+                       * np.exp(-0.5 * ((np.log(x_log) - mu_log) / sig_log) ** 2))
+            ax_log.plot(x_log, pdf_log, color=color, linewidth=2)
+            ax_log.axvline(geo_mean, color=color, linestyle="--", linewidth=1.2, alpha=0.8)
+
+        ax_raw.set_xlabel("Celkový čas pipeline (s)")
+        ax_raw.set_ylabel("Hustota pravdepodobnosti")
+        ax_raw.set_title("Gaussov fit — lineárna os\n(pravostranné skreslenie: zlý fit)")
+        ax_raw.legend(fontsize=7)
+        ax_raw.grid(zorder=0, alpha=0.5)
+        ax_raw.set_xlim(left=0)
+
+        ax_log.set_xscale("log")
+        ax_log.set_xlabel("Celkový čas pipeline (s, logaritmická os)")
+        ax_log.set_ylabel("Hustota pravdepodobnosti")
+        ax_log.set_title("Lognormálny fit — logaritmická os\n(takmer symetrický v log-priestore: dobrý fit)")
+        ax_log.legend(fontsize=7)
+        ax_log.grid(zorder=0, alpha=0.5)
+
+        fig.suptitle("Rozdelenie časov spracovania repozitárov", fontsize=13, fontweight="bold")
+        fig.tight_layout()
+
+    out = _FIGURES_DIR / "repo_distribution.png"
+    fig.savefig(out, dpi=150, facecolor='white')
+    plt.close(fig)
+    return out
+
+
+# ── generovanie všetkých grafov ───────────────────────────────────────────────
 
 def generate_all(results_dir: Path | None = None) -> List[Path]:
     if results_dir is None:
@@ -271,7 +419,7 @@ def generate_all(results_dir: Path | None = None) -> List[Path]:
 
     results = _load_results(results_dir)
     if not results:
-        print(f"No benchmark JSON found in {results_dir}")
+        print(f"Žiadne benchmark JSON súbory nenájdené v {results_dir}")
         return []
 
     generators = [
@@ -279,6 +427,8 @@ def generate_all(results_dir: Path | None = None) -> List[Path]:
         plot_repo_scatter,
         plot_repo_phase_breakdown,
         plot_repo_collector_phases,
+        plot_repo_memory,
+        plot_repo_distribution,
     ]
 
     paths = []
@@ -286,21 +436,21 @@ def generate_all(results_dir: Path | None = None) -> List[Path]:
         try:
             p = gen(results)
             paths.append(p)
-            print(f"  Saved: {p.name}")
+            print(f"  Uložené: {p.name}")
         except Exception as e:
-            print(f"  Warning: {gen.__name__} failed — {e}")
+            print(f"  Upozornenie: {gen.__name__} zlyhalo — {e}")
     return paths
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate per-repo benchmark charts")
+    parser = argparse.ArgumentParser(description="Generovanie grafov benchmarkov per-repozitár")
     parser.add_argument("--results", type=Path, default=None,
-                        help="Directory containing repo benchmark JSON files")
+                        help="Adresár s JSON súbormi benchmarkov repozitárov")
     args = parser.parse_args()
 
-    print("Generating repo charts…")
+    print("Generovanie grafov repozitárov…")
     paths = generate_all(args.results)
-    print(f"\n{len(paths)} chart(s) saved to benchmarks/figures/")
+    print(f"\n{len(paths)} graf(ov) uložených do benchmarks/figures/")
 
 
 if __name__ == "__main__":

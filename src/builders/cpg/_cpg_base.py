@@ -18,7 +18,7 @@ _VALID_NODE_TYPES = {
     "for_statement", "while_statement", "repeat_statement",
     "for_numeric_clause", "for_generic_clause", "block",
     "expression_list", "binary_expression", "return_statement",
-    "table_constructor", "literal", "local_variable",
+    "table_constructor", "literal",
     "directory", "file", "metric",
 }
 

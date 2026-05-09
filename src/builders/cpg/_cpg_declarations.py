@@ -228,5 +228,5 @@ class CPGDeclarationsMixin(CPGRelationsMixin):
         handler = self._declaration_handlers.get(node.type)
         if handler is None:
             return False
-        logger.info(f"\tEntering handler for declaration {handler.__name__}")
+        logger.debug(f"\tEntering handler for declaration {handler.__name__}")
         return handler(node, file_path)

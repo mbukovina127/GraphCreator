@@ -1,0 +1,64 @@
+@startuml CPG_ControlFlow
+' How execution flows through chunks, blocks, and control structures.
+!theme plain
+top to bottom direction
+hide empty members
+
+skinparam defaultFontSize 13
+skinparam padding 6
+skinparam nodesep 30
+skinparam ranksep 50
+skinparam class {
+    BackgroundColor #D6EAF8
+    BorderColor #2980B9
+}
+skinparam abstract {
+    BackgroundColor #FDFEFE
+    BorderColor #7F8C8D
+}
+'skinparam arrow { Color #2C3E50; FontSize 11 }
+
+class "chunk"        as chunk << node >>
+
+abstract class "«function definition»\nlocal · global" as func << node >>
+
+class "block"        as block << node >>
+
+class "function_call" as fcall << node >>
+
+abstract class "«control flow»\nif_statement · for_statement\nwhile_statement · repeat_statement" as cf << node >>
+
+abstract class "«condition»\nbinary_expression · for_clause" as cond << node >>
+
+abstract class "«branch»\nelseif_statement · else_statement" as branch << node >>
+
+class "return_statement" as ret_stmt << node >>
+
+abstract class "«return value»\nidentifier · expression_list · …" as ret_val << node >>
+
+' ── Chunk: no intermediate block in the Lua AST ───────
+chunk    -[#1E8449]->  func      : defines
+chunk    -[#C0392B]->  fcall     : calls
+chunk    -[#C0392B]->  cf        : executes
+
+' ── Function body ─────────────────────────────────────
+func     -[#2980B9]->  block     : has_block
+func     -[#8E44AD]->  ret_val   : returns
+
+' ── Block contents ────────────────────────────────────
+block    -[#C0392B]->  fcall     : calls
+block    -[#C0392B]->  cf        : executes
+block    -[#C0392B]->  ret_stmt  : flows_to
+
+' ── Control flow internals ────────────────────────────
+cf       -[#C0392B]->  cond      : has_condition
+cf       -[#C0392B]->  block     : has_block
+cf       -[#C0392B]->  branch    : executes
+
+branch   -[#C0392B]->  cond      : has_condition
+branch   -[#C0392B]->  block     : has_block
+
+' ── Return ────────────────────────────────────────────
+ret_stmt -[#C0392B]->  ret_val   : contains
+
+@enduml

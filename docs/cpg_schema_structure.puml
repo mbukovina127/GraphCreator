@@ -1,0 +1,57 @@
+@startuml CPG_Structure
+' Scope ownership and file-system spine.
+!theme plain
+top to bottom direction
+hide empty members
+
+skinparam defaultFontSize 13
+skinparam padding 6
+skinparam nodesep 30
+skinparam ranksep 50
+skinparam class {
+    BackgroundColor #D6EAF8
+    BorderColor #2980B9
+}
+skinparam package {
+    BackgroundColor #EBF5FB
+    BorderColor #1A5276
+    FontStyle bold
+}
+'skinparam arrow { Color #2C3E50; FontSize 11 }
+
+class "directory"    as dir   << node >>
+class "file"         as file  << node >>
+class "chunk"        as chunk << node >>
+class "module"       as mod   << node >>
+
+abstract class "«function definition»\nlocal_function_definition\nglobal_function_definition" as func << node >>
+
+abstract class "«variable declaration»\nlocal_variable_declaration\nglobal_variable_declaration" as var_d << node >>
+
+class "module_import"  as mod_imp << node >>
+
+class "metric\n(Halstead · LOC · Cyclomatic\n· Variables · Info-Flow · Statements)" as metric << node >>
+
+' ── Spine ─────────────────────────────────────────────
+dir      -[#1A5276]->  dir     : contains
+dir      -[#1A5276]->  file    : contains
+file     -[#1A5276]->  chunk   : contains
+file     -[#1A5276]->  mod     : contains
+
+' ── Scope ownership ───────────────────────────────────
+chunk    -[#1E8449]->  func    : defines
+chunk    -[#1E8449]->  var_d   : declares
+chunk    -[#1E8449]->  mod_imp : imports
+chunk    -[#1E8449]->  mod     : defines
+
+func     -[#1E8449]->  func    : defines
+func     -[#1E8449]->  var_d   : declares
+
+' ── Module resolution ─────────────────────────────────
+mod_imp  -[#8E44AD]->  mod     : refers_to
+
+' ── Metrics ───────────────────────────────────────────
+chunk    -[#2980B9]->  metric  : has_metrics
+func     -[#2980B9]->  metric  : has_metrics
+
+@enduml
