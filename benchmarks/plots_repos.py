@@ -332,15 +332,10 @@ def plot_repo_memory(results: List[Dict], top_n: int = 50) -> Path:
 
 def plot_repo_distribution(results: List[Dict]) -> Path:
     """
-    Dvojpanelový graf rozdelenia časov spracovania repozitárov.
+    Jednopanelový graf rozdelenia časov spracovania repozitárov.
 
-    Ľavý panel  — lineárna os s Gaussovým fitom. Pravostranné skreslenie je viditeľné
-                  hneď: krivka zasahuje do záporných hodnôt a nehodí sa na dlhý chvost.
-    Pravý panel — logaritmická os s lognormálnym fitom. V log-priestore sú dáta takmer
-                  symetrické (šikmosť ≈ 0.14), čo potvrdzuje lognormálne rozdelenie —
-                  typické pre metriky kódových repozitárov.
-
-    Prerušované zvislé čiary označujú geometrický priemer (= medián lognormálneho rozdelenia).
+    Logaritmická os s krokovými histogramami (iba obrysy) a lognormálnym fitom
+    pre každý variant CPU. Prerušované zvislé čiary = geometrický priemer.
     """
     by_repo_cpu: Dict[str, Dict[int, Dict]] = {}
     for r in results:
@@ -348,8 +343,23 @@ def plot_repo_distribution(results: List[Dict]) -> Path:
 
     all_cpus = sorted({r["num_cpus"] for r in results})
 
+    # compute global x-range so all variants share the same bins and axis
+    all_times_flat = [
+        by_repo_cpu[name][cpu]["time_total_s"]
+        for cpu in all_cpus
+        for name in by_repo_cpu
+        if cpu in by_repo_cpu[name]
+        and by_repo_cpu[name][cpu].get("time_total_s", 0) > 0
+    ]
+    if not all_times_flat:
+        raise ValueError("Žiadne dáta pre repo_distribution")
+    global_min = min(all_times_flat)
+    global_max = max(all_times_flat)
+    bins_log = np.logspace(np.log10(global_min), np.log10(global_max), 30)
+    x_fit    = np.logspace(np.log10(global_min), np.log10(global_max), 400)
+
     with plt.rc_context(_STYLE):
-        fig, (ax_raw, ax_log) = plt.subplots(1, 2, figsize=(14, 5))
+        fig, ax = plt.subplots(figsize=(11, 6))
 
         for ci, cpu in enumerate(all_cpus):
             times = np.array([
@@ -361,54 +371,106 @@ def plot_repo_distribution(results: List[Dict]) -> Path:
             if len(times) < 5:
                 continue
 
-            color = _PALETTE[ci % len(_PALETTE)]
-
-            # ── Ľavý panel: lineárna os, Gaussov fit ──────────────────────────
-            mu_raw, sig_raw = float(times.mean()), float(times.std())
-            skew_raw = float((((times - mu_raw) / sig_raw) ** 3).mean())
-            ax_raw.hist(times, bins=25, density=True, alpha=0.35, color=color,
-                        label=f"{_CPU_LABEL(cpu)} (n={len(times)}, μ={mu_raw:.2f}s, σ={sig_raw:.2f}s, šikmosť={skew_raw:.2f})")
-            x_raw = np.linspace(max(0, mu_raw - 4 * sig_raw), mu_raw + 4 * sig_raw, 300)
-            pdf_raw = ((1 / (sig_raw * np.sqrt(2 * np.pi)))
-                       * np.exp(-0.5 * ((x_raw - mu_raw) / sig_raw) ** 2))
-            ax_raw.plot(x_raw, pdf_raw, color=color, linewidth=2)
-            ax_raw.axvline(mu_raw, color=color, linestyle="--", linewidth=1.2, alpha=0.8)
-
-            # ── Pravý panel: logaritmická os, lognormálny fit ──────────────────
-            log_t = np.log(times)
-            mu_log, sig_log = float(log_t.mean()), float(log_t.std())
-            skew_log = float((((log_t - mu_log) / sig_log) ** 3).mean())
+            color    = _PALETTE[ci % len(_PALETTE)]
+            log_t    = np.log(times)
+            mu_log   = float(log_t.mean())
+            sig_log  = float(log_t.std())
             geo_mean = float(np.exp(mu_log))
-            bins_log = np.logspace(np.log10(times.min()), np.log10(times.max()), 25)
-            ax_log.hist(times, bins=bins_log, density=True, alpha=0.35, color=color,
-                        label=f"{_CPU_LABEL(cpu)} (n={len(times)}, geom. priemer={geo_mean:.3f}s, σ_log={sig_log:.2f}, šikmosť={skew_log:.2f})")
-            x_log = np.logspace(np.log10(times.min()), np.log10(times.max()), 400)
-            pdf_log = ((1 / (x_log * sig_log * np.sqrt(2 * np.pi)))
-                       * np.exp(-0.5 * ((np.log(x_log) - mu_log) / sig_log) ** 2))
-            ax_log.plot(x_log, pdf_log, color=color, linewidth=2)
-            ax_log.axvline(geo_mean, color=color, linestyle="--", linewidth=1.2, alpha=0.8)
 
-        ax_raw.set_xlabel("Celkový čas pipeline (s)")
-        ax_raw.set_ylabel("Hustota pravdepodobnosti")
-        ax_raw.set_title("Gaussov fit — lineárna os\n(pravostranné skreslenie: zlý fit)")
-        ax_raw.legend(fontsize=7)
-        ax_raw.grid(zorder=0, alpha=0.5)
-        ax_raw.set_xlim(left=0)
+            ax.hist(times, bins=bins_log, density=True,
+                    histtype="step", linewidth=1.8, color=color,
+                    label=f"{_CPU_LABEL(cpu)}  (n={len(times)}, geom. priemer={geo_mean:.3f} s)")
 
-        ax_log.set_xscale("log")
-        ax_log.set_xlabel("Celkový čas pipeline (s, logaritmická os)")
-        ax_log.set_ylabel("Hustota pravdepodobnosti")
-        ax_log.set_title("Lognormálny fit — logaritmická os\n(takmer symetrický v log-priestore: dobrý fit)")
-        ax_log.legend(fontsize=7)
-        ax_log.grid(zorder=0, alpha=0.5)
+            pdf_fit = ((1 / (x_fit * sig_log * np.sqrt(2 * np.pi)))
+                       * np.exp(-0.5 * ((np.log(x_fit) - mu_log) / sig_log) ** 2))
+            ax.plot(x_fit, pdf_fit, color=color, linewidth=2.2, alpha=0.85)
 
-        fig.suptitle("Rozdelenie časov spracovania repozitárov", fontsize=13, fontweight="bold")
+            ax.axvline(geo_mean, color=color, lw=1.0, ls="--", alpha=0.75)
+
+        ax.set_xscale("log")
+        ax.set_xlabel("Celkový čas pipeline (s, logaritmická os)")
+        ax.set_ylabel("Hustota pravdepodobnosti")
+        ax.set_title("Rozdelenie časov spracovania repozitárov (lognormálny fit)", fontsize=12)
+        ax.legend(fontsize=9, framealpha=0.9)
+        ax.grid(zorder=0, alpha=0.5, which="both")
         fig.tight_layout()
 
     out = _FIGURES_DIR / "repo_distribution.png"
     fig.savefig(out, dpi=150, facecolor='white')
     plt.close(fig)
     return out
+
+
+# ── Graf 7: Individuálne rozdelenia — jeden súbor na variant CPU ─────────────
+
+def plot_repo_distribution_per_cpu(results: List[Dict]) -> List[Path]:
+    """Jeden PNG per variant CPU: krokový histogram + lognormálny fit na log osi."""
+    by_repo_cpu: Dict[str, Dict[int, Dict]] = {}
+    for r in results:
+        by_repo_cpu.setdefault(r["dataset"], {})[r["num_cpus"]] = r
+
+    all_cpus = sorted({r["num_cpus"] for r in results})
+
+    all_times_flat = [
+        by_repo_cpu[name][cpu]["time_total_s"]
+        for cpu in all_cpus
+        for name in by_repo_cpu
+        if cpu in by_repo_cpu[name]
+        and by_repo_cpu[name][cpu].get("time_total_s", 0) > 0
+    ]
+    if not all_times_flat:
+        raise ValueError("Žiadne dáta pre plot_repo_distribution_per_cpu")
+    global_min = min(all_times_flat)
+    global_max = max(all_times_flat)
+    bins_log = np.logspace(np.log10(global_min), np.log10(global_max), 30)
+    x_fit    = np.logspace(np.log10(global_min), np.log10(global_max), 400)
+
+    paths = []
+    for ci, cpu in enumerate(all_cpus):
+        times = np.array([
+            by_repo_cpu[name][cpu]["time_total_s"]
+            for name in by_repo_cpu
+            if cpu in by_repo_cpu[name]
+            and by_repo_cpu[name][cpu].get("time_total_s", 0) > 0
+        ])
+        if len(times) < 5:
+            continue
+
+        color    = _PALETTE[ci % len(_PALETTE)]
+        log_t    = np.log(times)
+        mu_log   = float(log_t.mean())
+        sig_log  = float(log_t.std())
+        geo_mean = float(np.exp(mu_log))
+
+        with plt.rc_context(_STYLE):
+            fig, ax = plt.subplots(figsize=(8, 5))
+
+            ax.hist(times, bins=bins_log, density=True,
+                    histtype="step", linewidth=2.0, color=color)
+
+            pdf_fit = ((1 / (x_fit * sig_log * np.sqrt(2 * np.pi)))
+                       * np.exp(-0.5 * ((np.log(x_fit) - mu_log) / sig_log) ** 2))
+            ax.plot(x_fit, pdf_fit, color=color, linewidth=2.2, alpha=0.85,
+                    label=f"Lognormálny fit  (geom. priemer={geo_mean:.3f} s, σ_log={sig_log:.2f})")
+
+            ax.axvline(geo_mean, color=color, lw=1.2, ls="--", alpha=0.8,
+                       label=f"Geometrický priemer = {geo_mean:.3f} s")
+
+            ax.set_xscale("log")
+            ax.set_xlabel("Celkový čas pipeline (s, logaritmická os)")
+            ax.set_ylabel("Hustota pravdepodobnosti")
+            ax.set_title(f"Rozdelenie časov repozitárov — {_CPU_LABEL(cpu)}  (n={len(times)})",
+                         fontsize=12)
+            ax.legend(fontsize=9, framealpha=0.9)
+            ax.grid(zorder=0, alpha=0.5, which="both")
+            fig.tight_layout()
+
+        out = _FIGURES_DIR / f"repo_distribution_cpu{cpu}.png"
+        fig.savefig(out, dpi=150, facecolor="white")
+        plt.close(fig)
+        paths.append(out)
+
+    return paths
 
 
 # ── generovanie všetkých grafov ───────────────────────────────────────────────
@@ -439,6 +501,15 @@ def generate_all(results_dir: Path | None = None) -> List[Path]:
             print(f"  Uložené: {p.name}")
         except Exception as e:
             print(f"  Upozornenie: {gen.__name__} zlyhalo — {e}")
+
+    try:
+        per_cpu_paths = plot_repo_distribution_per_cpu(results)
+        for p in per_cpu_paths:
+            paths.append(p)
+            print(f"  Uložené: {p.name}")
+    except Exception as e:
+        print(f"  Upozornenie: plot_repo_distribution_per_cpu zlyhalo — {e}")
+
     return paths
 
 

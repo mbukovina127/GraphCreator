@@ -15,7 +15,7 @@ import os
 import sys
 import time
 import tracemalloc
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
@@ -76,6 +76,11 @@ class BenchmarkResult:
     resolution_rate: float
     node_type_counts: Dict[str, int]
     edge_relation_counts: Dict[str, int]
+    # ── per-file pipeline timings (individual values, for distribution plots) ──
+    file_parse_times_s:      List[float] = field(default_factory=list)
+    file_ast_insert_times_s: List[float] = field(default_factory=list)
+    file_symbol_times_s:     List[float] = field(default_factory=list)
+    file_cpg_build_times_s:  List[float] = field(default_factory=list)
     timestamp: str = ""
     runner: str = "ray"
 
@@ -93,6 +98,14 @@ class BenchmarkResult:
 def _avg_timing(results: List[Dict], key: str) -> float:
     vals = [r["_timing"][key] for r in results if r and "_timing" in r and key in r["_timing"]]
     return round(sum(vals) / len(vals), 6) if vals else 0.0
+
+
+def _collect_timings(results: List[Dict], key: str) -> List[float]:
+    return [
+        round(r["_timing"][key], 6)
+        for r in results
+        if r and "_timing" in r and key in r["_timing"]
+    ]
 
 
 # ── resolution counting ──────────────────────────────────────────────────────
@@ -258,6 +271,10 @@ def run_benchmark_on_dir(
         avg_ast_insert_s=_avg_timing(results_list, "ast_insert_s"),
         avg_symbol_s=_avg_timing(results_list, "symbol_s"),
         avg_cpg_build_s=_avg_timing(results_list, "cpg_build_s"),
+        file_parse_times_s=_collect_timings(results_list, "parse_s"),
+        file_ast_insert_times_s=_collect_timings(results_list, "ast_insert_s"),
+        file_symbol_times_s=_collect_timings(results_list, "symbol_s"),
+        file_cpg_build_times_s=_collect_timings(results_list, "cpg_build_s"),
         time_collect_local_s=round(pt.get("collect_local_s", 0), 4),
         time_spine_s=round(pt.get("spine_s", 0), 4),
         time_index_s=round(pt.get("index_s", 0), 4),
