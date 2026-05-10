@@ -55,12 +55,13 @@ class BenchmarkResult:
     avg_symbol_s: float         # symbol table build
     avg_cpg_build_s: float      # CPG / knowledge graph construction
     # ── GraphCollector sub-phase timings ──────────────────────────────────────
-    time_collect_local_s: float # storing per-file results
-    time_spine_s: float         # filesystem spine creation
-    time_index_s: float         # module/chunk index build
-    time_resolve_s: float       # cross-file edge resolution
-    time_metrics_s: float       # graph-level metrics computation
-    time_schema_s: float        # schema validation
+    time_collect_local_s: float  # storing per-file results
+    time_spine_s: float          # filesystem spine creation
+    time_index_s: float          # module/chunk index build
+    time_resolve_s: float        # cross-file edge resolution
+    time_field_resolve_s: float  # module field access (m.foo) resolution
+    time_metrics_s: float        # graph-level metrics computation
+    time_schema_s: float         # schema validation
     # ── Ray scheduling metrics ─────────────────────────────────────────────────
     tasks_submitted: int
     first_result_latency_s: float   # time from submission to first task done
@@ -195,25 +196,50 @@ def run_benchmark_on_dir(
     num_cpus: int = 4,
     *,
     ray_restart: bool = True,
+    runner: str = "ray",
 ) -> BenchmarkResult:
     """
     Run the full CPG pipeline on an already-extracted directory.
 
-    Phase 1: distributed analysis via Ray workers.
-    Phase 2: GraphCollector merge (sequential, after all Ray tasks complete).
+    runner="ray":        Phase 1 via Ray workers, Phase 2 via GraphCollector.
+    runner="sequential": Both phases unified in SequentialGraphCollector (no Ray).
     Called by run_benchmark() and runner_repos.py.
     """
     proc = psutil.Process(os.getpid())
     rss_before = proc.memory_info().rss
 
-    phase = _run_ray_phase(files, num_cpus, ray_restart=ray_restart)
+    # ── Phase 1 + 2 unified (sequential) ─────────────────────────────────────
+    if runner == "sequential":
+        from builders.sequential_graph_collector import SequentialGraphCollector
+        gc = SequentialGraphCollector()
+        gc.collect(files, extract_dir)
+        time_analysis_s = gc.time_analysis_s
+        peak_mb         = gc.peak_memory_mb
+        results_list    = list(gc.results.values())
+        tasks_submitted = gc.tasks_submitted
+        first_latency   = gc.first_result_latency_s
+        task_spread     = gc.task_spread_s
+        pt              = gc.phase_timings
+        time_collect    = sum(pt.get(k, 0) for k in (
+            "spine_s", "index_s", "resolve_s", "field_resolve_s", "metrics_s", "schema_s"
+        ))
 
-    gc = GraphCollector()
-    t2 = time.perf_counter()
-    gc.collect(phase.results, extract_dir)
-    time_collect = time.perf_counter() - t2
-    pt = gc.phase_timings
+    # ── Phase 1 (Ray) + Phase 2 (GraphCollector) ─────────────────────────────
+    else:
+        phase = _run_ray_phase(files, num_cpus, ray_restart=ray_restart)
+        gc = GraphCollector()
+        t2 = time.perf_counter()
+        gc.collect(phase.results, extract_dir)
+        time_collect    = time.perf_counter() - t2
+        time_analysis_s = phase.time_s
+        peak_mb         = phase.peak_memory_mb
+        results_list    = phase.results
+        tasks_submitted = phase.tasks_submitted
+        first_latency   = phase.first_result_latency_s
+        task_spread     = phase.task_spread_s
+        pt              = gc.phase_timings
 
+    # ── shared result construction ────────────────────────────────────────────
     rss_after = proc.memory_info().rss
     resolved, unresolved = _count_resolution(gc)
     total_imports = resolved + unresolved
@@ -223,24 +249,25 @@ def run_benchmark_on_dir(
         dataset=dataset_name,
         num_cpus=num_cpus,
         n_files=len(files),
-        time_ray_s=phase.time_s,
+        time_ray_s=round(time_analysis_s, 4),
         time_collect_s=round(time_collect, 4),
-        time_total_s=round(phase.time_s + time_collect, 4),
-        peak_memory_mb=phase.peak_memory_mb,
+        time_total_s=round(time_analysis_s + time_collect, 4),
+        peak_memory_mb=round(peak_mb, 2),
         rss_delta_mb=round((rss_after - rss_before) / 1024 / 1024, 2),
-        avg_parse_s=_avg_timing(phase.results, "parse_s"),
-        avg_ast_insert_s=_avg_timing(phase.results, "ast_insert_s"),
-        avg_symbol_s=_avg_timing(phase.results, "symbol_s"),
-        avg_cpg_build_s=_avg_timing(phase.results, "cpg_build_s"),
+        avg_parse_s=_avg_timing(results_list, "parse_s"),
+        avg_ast_insert_s=_avg_timing(results_list, "ast_insert_s"),
+        avg_symbol_s=_avg_timing(results_list, "symbol_s"),
+        avg_cpg_build_s=_avg_timing(results_list, "cpg_build_s"),
         time_collect_local_s=round(pt.get("collect_local_s", 0), 4),
         time_spine_s=round(pt.get("spine_s", 0), 4),
         time_index_s=round(pt.get("index_s", 0), 4),
         time_resolve_s=round(pt.get("resolve_s", 0), 4),
+        time_field_resolve_s=round(pt.get("field_resolve_s", 0), 4),
         time_metrics_s=round(pt.get("metrics_s", 0), 4),
         time_schema_s=round(pt.get("schema_s", 0), 4),
-        tasks_submitted=phase.tasks_submitted,
-        first_result_latency_s=phase.first_result_latency_s,
-        task_spread_s=phase.task_spread_s,
+        tasks_submitted=tasks_submitted,
+        first_result_latency_s=first_latency,
+        task_spread_s=task_spread,
         n_knowledge_nodes=len(gc._knowledge_nodes),
         n_knowledge_edges=len(gc._knowledge_edges),
         n_ast_nodes=len(gc._ast_nodes),
@@ -250,13 +277,14 @@ def run_benchmark_on_dir(
         resolution_rate=round(resolution_rate, 4),
         node_type_counts=_node_type_counts(gc),
         edge_relation_counts=_edge_relation_counts(gc),
+        runner=runner,
     )
 
 
-def run_benchmark(dataset: str, num_cpus: int = 4) -> BenchmarkResult:
+def run_benchmark(dataset: str, num_cpus: int = 4, runner: str = "ray") -> BenchmarkResult:
     """Run the full CPG pipeline on a named ZIP dataset."""
     extract_dir, files = extract_dataset(dataset)
-    return run_benchmark_on_dir(extract_dir, files, dataset, num_cpus, ray_restart=True)
+    return run_benchmark_on_dir(extract_dir, files, dataset, num_cpus, ray_restart=True, runner=runner)
 
 
 # ── scalability sweep ────────────────────────────────────────────────────────
@@ -264,6 +292,7 @@ def run_benchmark(dataset: str, num_cpus: int = 4) -> BenchmarkResult:
 def run_scalability_sweep(
     dataset: str,
     cpu_counts: List[int] = None,
+    runner: str = "ray",
 ) -> List[BenchmarkResult]:
     """Run the same dataset across CPU budgets for scalability comparison."""
     if cpu_counts is None:
@@ -271,8 +300,8 @@ def run_scalability_sweep(
 
     results = []
     for n in cpu_counts:
-        print(f"  [{dataset}] cpu={n} … ", end="", flush=True)
-        br = run_benchmark(dataset, num_cpus=n)
+        print(f"  [{dataset}] cpu={n} runner={runner} … ", end="", flush=True)
+        br = run_benchmark(dataset, num_cpus=n, runner=runner)
         results.append(br)
         print(f"{br.time_total_s:.2f}s  ({br.n_files} files, {br.n_knowledge_nodes} kg-nodes)")
     return results
@@ -306,6 +335,8 @@ def main():
     parser.add_argument("--dataset", choices=list(DATASETS.keys()) + ["all"], default="all")
     parser.add_argument("--cpus", nargs="+", type=int, default=[1, 2, 4],
                         help="CPU budgets to sweep")
+    parser.add_argument("--runner", choices=["ray", "sequential"], default="ray",
+                        help="Execution backend (default: ray)")
     args = parser.parse_args()
 
     datasets = list(DATASETS.keys()) if args.dataset == "all" else [args.dataset]
@@ -317,8 +348,8 @@ def main():
 
     all_results = []
     for ds in datasets:
-        print(f"\nBenchmarking dataset: {ds}")
-        sweep = run_scalability_sweep(ds, args.cpus)
+        print(f"\nBenchmarking dataset: {ds}  runner={args.runner}")
+        sweep = run_scalability_sweep(ds, args.cpus, runner=args.runner)
         for br in sweep:
             path = br.save()
             _print_result(br)

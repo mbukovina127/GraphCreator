@@ -486,6 +486,192 @@ def plot_memory(results: List[Dict]) -> Path:
     return out
 
 
+# ── Chart 10: Combined throughput + collector phases ─────────────────────────
+
+def plot_throughput_phases(results: List[Dict]) -> Path:
+    """
+    Two-panel chart combining pipeline phase breakdown and throughput.
+
+    Top panel:    Grouped stacked bars — each bar's total height = time_total_s,
+                  subsections = individual pipeline phases in order.
+    Bottom panel: Throughput (files/s) for the same (dataset, variant) bars.
+
+    Groups = datasets.  Within each group: one bar per (runner, cpu) variant,
+    sequential first (if present), then Ray in ascending CPU order.
+    """
+    from matplotlib.transforms import blended_transform_factory
+
+    # ── build per-(runner, cpu, dataset) lookup ───────────────────────────────
+    lookup: Dict[tuple, Dict] = {}
+    for r in results:
+        k = (r.get("runner", "ray"), r["num_cpus"], r["dataset"])
+        if k not in lookup or r.get("timestamp", "") > lookup[k].get("timestamp", ""):
+            lookup[k] = r
+
+    datasets = sorted({r["dataset"] for r in results})
+    ray_cpus = sorted({r["num_cpus"] for r in results if r.get("runner", "ray") == "ray"})
+    seq_cpus = sorted({r["num_cpus"] for r in results if r.get("runner") == "sequential"})
+
+    variants: List[tuple] = (
+        [("sequential", c) for c in seq_cpus] +
+        [("ray", c) for c in ray_cpus]
+    )
+    if not variants or not datasets:
+        raise ValueError("No results to plot")
+
+    def vlabel(runner, cpu):
+        return "Seq" if runner == "sequential" else f"R×{cpu}"
+
+    # phase definitions: (json_field, label, color)
+    PHASES = [
+        ("time_ray_s",           "Analýza (Ray/sekv.)",  "#4472C4"),
+        ("time_collect_local_s", "Ukladanie výsledkov",  "#9DC3E6"),
+        ("time_spine_s",         "Hierarchia FS",         "#ED7D31"),
+        ("time_index_s",         "Zostavenie indexu",     "#70AD47"),
+        ("time_resolve_s",       "Rozlíšenie symbolov",   "#FFC000"),
+        ("time_field_resolve_s", "Rozlíšenie polí",       "#FF6B6B"),
+        ("time_metrics_s",       "Metriky grafu",         "#7030A0"),
+        ("time_schema_s",        "Validácia schémy",      "#A5A5A5"),
+    ]
+
+    # ── compute bar positions ─────────────────────────────────────────────────
+    n_v = len(variants)
+    bar_w = 0.65 / max(n_v, 1)
+    group_w = n_v * bar_w + 0.55      # width of one dataset group incl. padding
+
+    bar_xs: Dict[tuple, float] = {}
+    for gi, ds in enumerate(datasets):
+        gc = gi * group_w
+        for vi, (runner, cpu) in enumerate(variants):
+            bar_xs[(ds, runner, cpu)] = gc + (vi - n_v / 2 + 0.5) * bar_w
+
+    group_centers = [gi * group_w for gi in range(len(datasets))]
+    x_tick_pos = [bar_xs[(ds, r, c)] for ds in datasets
+                  for r, c in variants if (r, c, ds) in lookup]
+    x_tick_lbl = [vlabel(r, c) for ds in datasets
+                  for r, c in variants if (r, c, ds) in lookup]
+
+    fig_w = max(9, len(datasets) * group_w * 2.2)
+
+    with plt.rc_context(_STYLE):
+        fig, (ax_t, ax_p) = plt.subplots(
+            2, 1,
+            figsize=(fig_w, 7.5),
+            gridspec_kw={"height_ratios": [3, 1]},
+            sharex=True,
+        )
+
+        # pre-compute max total for y-limit — gives stable headroom before labels
+        max_total = max(
+            (float(lookup[(r, c, ds)].get("time_total_s", 0))
+             for ds in datasets for r, c in variants if (r, c, ds) in lookup),
+            default=1.0,
+        )
+        y_ceil = max_total * 1.13   # 13% headroom for total-time labels + group badge
+
+        # ── top panel: stacked phase bars ─────────────────────────────────────
+        for ds in datasets:
+            for runner, cpu in variants:
+                key = (runner, cpu, ds)
+                r = lookup.get(key)
+                if r is None:
+                    continue
+                x = bar_xs[(ds, runner, cpu)]
+                bar_total = float(r.get("time_total_s", 1))
+                bottom = 0.0
+
+                for field, _, color in PHASES:
+                    v = float(r.get(field, 0))
+                    if v <= 0:
+                        continue
+                    ax_t.bar(x, v, bar_w * 0.9, bottom=bottom, color=color, zorder=3)
+                    # label only if the segment occupies > 4% of the y-axis height —
+                    # this keeps analysis-phase labels on all bars while suppressing
+                    # the dense collector-phase annotations that crowd on short bars
+                    if v > y_ceil * 0.04:
+                        ax_t.text(x, bottom + v / 2, f"{v * 1000:.0f}ms",
+                                  ha="center", va="center", fontsize=6.5,
+                                  color="white", fontweight="bold")
+                    bottom += v
+
+                # total time label — positioned relative to y_ceil for consistency
+                ax_t.text(x, bottom + y_ceil * 0.012, f"{bar_total:.2f}s",
+                          ha="center", va="bottom", fontsize=7, color="#333333")
+
+        # legend
+        patches = [mpatches.Patch(color=c, label=l) for _, l, c in PHASES]
+        ax_t.legend(handles=patches, fontsize=7.5, loc="upper right",
+                    ncol=2, framealpha=0.9, edgecolor="#CCCCCC")
+        ax_t.set_ylabel("Čas pipeline (sekundy)", fontsize=9)
+        ax_t.set_title("Čas pipeline podľa fáz  ·  Priepustnosť (súbory/s)",
+                       fontsize=11, pad=14)
+        ax_t.grid(axis="y", zorder=0)
+        ax_t.set_ylim(0, y_ceil)
+
+        # dataset group labels above the bars (blended transform: data x, axes y)
+        trans_t = blended_transform_factory(ax_t.transData, ax_t.transAxes)
+        for gi, ds in enumerate(datasets):
+            gc = group_centers[gi]
+            n_f = next((lookup[(r, c, ds)]["n_files"]
+                        for r, c in variants if (r, c, ds) in lookup), "?")
+            ax_t.text(gc, 1.02, f"{ds}  ({n_f} súborov)",
+                      ha="center", va="bottom", fontsize=9, fontweight="bold",
+                      transform=trans_t, clip_on=False,
+                      bbox=dict(boxstyle="round,pad=0.2", fc="white",
+                                ec="#CCCCCC", alpha=0.9))
+
+        # vertical group separators
+        for i in range(1, len(group_centers)):
+            sep = (group_centers[i - 1] + group_centers[i]) / 2
+            ax_t.axvline(sep, color="#BBBBBB", lw=0.8, ls="--", zorder=1)
+
+        # ── bottom panel: throughput ──────────────────────────────────────────
+        v_colors = {v: _PALETTE[vi % len(_PALETTE)] for vi, v in enumerate(variants)}
+
+        for ds in datasets:
+            for runner, cpu in variants:
+                key = (runner, cpu, ds)
+                r = lookup.get(key)
+                if r is None:
+                    continue
+                x = bar_xs[(ds, runner, cpu)]
+                total = float(r.get("time_total_s", 0))
+                n_f = r.get("n_files", 0)
+                tput = n_f / total if total > 0 else 0
+                ax_p.bar(x, tput, bar_w * 0.9, color=v_colors[(runner, cpu)],
+                         zorder=3, alpha=0.9)
+                ax_p.text(x, tput * 1.03 + 0.02, f"{tput:.1f}",
+                          ha="center", va="bottom", fontsize=6.5)
+
+        for i in range(1, len(group_centers)):
+            sep = (group_centers[i - 1] + group_centers[i]) / 2
+            ax_p.axvline(sep, color="#BBBBBB", lw=0.8, ls="--", zorder=1)
+
+        ax_p.set_ylabel("Priepustnosť\n(súbory/s)", fontsize=9)
+        ax_p.set_xlabel(
+            "Varianta: Seq = sekvenčná, R×N = Ray s N CPU",
+            fontsize=8, labelpad=6,
+        )
+        ax_p.grid(axis="y", zorder=0)
+        ax_p.set_ylim(bottom=0)
+
+        # shared x ticks (visible only on bottom panel due to sharex)
+        ax_p.set_xticks(x_tick_pos)
+        ax_p.set_xticklabels(x_tick_lbl, rotation=45, ha="right", fontsize=7.5)
+
+        xl = (group_centers[0] - group_w * 0.55,
+              group_centers[-1] + group_w * 0.55)
+        ax_p.set_xlim(*xl)
+
+        fig.tight_layout()
+        fig.subplots_adjust(hspace=0.08, top=0.91)
+
+    out = _FIGURES_DIR / "throughput_phases.png"
+    fig.savefig(out, dpi=150, facecolor="white")
+    plt.close(fig)
+    return out
+
+
 # ── generate all charts ──────────────────────────────────────────────────────
 
 def generate_all(results_dir: Path | None = None) -> List[Path]:
@@ -507,6 +693,7 @@ def generate_all(results_dir: Path | None = None) -> List[Path]:
         plot_pipeline_stages,
         plot_collector_phases,
         plot_ray_scheduling,
+        plot_throughput_phases,
     ]
 
     paths = []
