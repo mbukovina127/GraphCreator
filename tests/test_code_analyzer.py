@@ -297,10 +297,10 @@ class TestLOC:
             ast = manager.parse(f.name)
             
             loc = calculate_loc(ast.root_node)
-            
+
             # LOC counts non-empty lines in the AST
             # SIMPLE_LUA has 4 lines total (including empty first line from triple-quote)
-            assert loc >= 3  # At least 3 non-empty lines
+            assert loc["nonempty"] >= 3  # At least 3 non-empty lines
             
             f.close()
             os.unlink(f.name)
@@ -316,9 +316,9 @@ class TestLOC:
             ast = manager.parse(f.name)
             
             loc = calculate_loc(ast.root_node)
-            
+
             # LOC counts lines in the AST (includes all lines)
-            assert loc >= 6  # At least 6 lines of actual code
+            assert loc["nonempty"] >= 6  # At least 6 lines of actual code
             
             f.close()
             os.unlink(f.name)

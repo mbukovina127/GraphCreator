@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "schema_lua/v1/cpg.export.schema.json",
+  "$id": "schema/v1/cpg.export.schema.json",
   "title": "Universal CPG Export (v1)",
   "description": "Validates the JSON produced by the Lua CPG generator.",
   "type": "object",
@@ -38,6 +38,10 @@
         "graph_id": {
           "type": "string",
           "description": "Stable identifier for this graph export (e.g. a project ID)."
+        },
+        "project_id": {
+          "type": "string",
+          "description": "Project identifier passed to export_cpg_v1()."
         },
         "generator": {
           "type": "string",

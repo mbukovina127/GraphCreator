@@ -240,7 +240,6 @@ class TestAnyOf:
         fns = lst.scope_lookup_by_kind(ast.root_node.id, "global_function")
         assert len(fns) == 1
 
-    @pytest.mark.xfail(reason="For loops have parameters / local_variables in symbol table") # FIXME needs changing
     def test_anyof_has_one_parameter(self):
         ast, lst = build_symbol_table(ANY_OF)
         params = [sym for sym in lst.exports.values() if sym.kind == "parameter"]

@@ -1,5 +1,5 @@
 ' CPG schema is split into three focused diagrams:
 '
-'   cpg_schema_structure.puml   — file-system spine, scope ownership, module resolution
-'   cpg_schema_control_flow.puml — execution through chunks, blocks, control structures
-'   cpg_schema_data_flow.puml   — expression resolution, member access, data flow edges
+   cpg_schema_structure.puml   — file-system spine, scope ownership, module resolution
+   cpg_schema_control_flow.puml — execution through chunks, blocks, control structures
+   cpg_schema_data_flow.puml   — expression resolution, member access, data flow edges

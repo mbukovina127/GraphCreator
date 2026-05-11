@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "schema/v2/cpg.edge.schema.json",
+  "title": "Universal CPG Edge (v2)",
+  "description": "Validates a single edge in the export format produced by GraphCollector.export_cpg_v1().",
+  "type": "object",
+  "required": ["source", "target", "type"],
+  "additionalProperties": false,
+  "properties": {
+    "source": {
+      "type": "string",
+      "description": "The 'id' of the source node in the export ('{project_id}:{internal_key}')."
+    },
+    "target": {
+      "type": "string",
+      "description": "The 'id' of the target node in the export ('{project_id}:{internal_key}')."
+    },
+    "type": {
+      "type": "string",
+      "description": "Mapped CPG edge type — derived from the internal relation string by export_cpg_v1().",
+      "enum": [
+        "AST_CHILD",
+        "CONTAINS",
+        "FLOWS_TO",
+        "CALLS",
+        "DEFINES",
+        "DECLARES",
+        "REFERS_TO",
+        "HAS_PARAMETER",
+        "RETURNS",
+        "IMPORTS"
+      ]
+    },
+    "properties": {
+      "type": "object",
+      "description": "Edge metadata. Always contains 'relation' (the internal relation string before mapping).",
+      "additionalProperties": true,
+      "properties": {
+        "relation": {
+          "type": "string",
+          "description": "Internal relation string before export mapping. One of: defines, declares, contains, imports, has_block, has_parameters, has_field, has_argument, has_condition, refers_to, calls, returns, flows_to, initializes, assigns_to, inside_of, executes, is, child_of, has_metrics, AST_CHILD, has_parameter, has_callee, accesses_member_of, accesses_export, has_scope, nested, captures, reaches."
+        },
+        "index": {
+          "type": "integer",
+          "description": "Positional index (0-based) of an argument in a function call, or a parameter in a function definition. Present on HAS_PARAMETER edges."
+        },
+        "operator": {
+          "type": "string",
+          "description": "Operator string for binary_expression edges (e.g. '+', '..', '==', 'and', 'or'). Present when the edge originates from a binary_expression node."
+        }
+      }
+    }
+  }
+}

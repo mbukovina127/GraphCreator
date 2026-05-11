@@ -10,6 +10,7 @@ class SymbolBuilder:
         self._lst = lst
         self._scope_stack = ScopeStack(self._lst.worker_id, file_path, lst)
         self.parameter_stack: List = []
+        self.loop_variable_stack: List = []
         self._init_declaration_handlers()
 
     def _init_declaration_handlers(self):
@@ -125,14 +126,14 @@ class SymbolBuilder:
         if clause is not None:
             identifier = ASTUtils.first_node_of_type(node, "identifier")
             if identifier is not None:
-                self.parameter_stack.append(identifier)
+                self.loop_variable_stack.append(identifier)
 
         clause = ASTUtils.nodes_of_type(node, "for_generic_clause")
         if clause is not None:
             identifier = ASTUtils.first_node_of_type(node, "identifier")
             while True:
                 if identifier is not None:
-                    self.parameter_stack.append(identifier)
+                    self.loop_variable_stack.append(identifier)
                 if identifier.next_sibling is None or identifier.next_sibling.type != ",":
                     break
                 else:
@@ -143,6 +144,9 @@ class SymbolBuilder:
         while len(self.parameter_stack) > 0:
             param = self.parameter_stack.pop()
             self.__add_symbol(ASTUtils.get_text(param), param, "parameter")
+        while len(self.loop_variable_stack) > 0:
+            var = self.loop_variable_stack.pop()
+            self.__add_symbol(ASTUtils.get_text(var), var, "loop_variable")
         return True
 
     def _handle_module_call(self, node) -> bool:

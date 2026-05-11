@@ -168,23 +168,22 @@ class TestDaprClientUnit:
             
             mock_post.assert_called_once()
             call_args = mock_post.call_args
-            
+
             # Verify topic is in URL
             assert "graph-updates" in call_args[0][0]
-            
-            # Verify content is base64-encoded compressed data
-            content = call_args.kwargs.get('content')
-            assert content is not None
-            
-            # Verify headers indicate compression
-            headers = call_args.kwargs.get('headers', {})
-            assert headers.get('metadata.contentencoding') == 'zstd'
-            
+
+            # Verify envelope was sent as JSON (RabbitMQ doesn't preserve HTTP metadata)
+            envelope = call_args.kwargs.get('json')
+            assert envelope is not None
+            assert envelope.get('encoding') == 'zstd+base64'
+            encoded = envelope.get('data')
+            assert encoded is not None
+
             # Verify we can decode and decompress
-            compressed = base64.b64decode(content)
+            compressed = base64.b64decode(encoded)
             decompressor = zstd.ZstdDecompressor()
             decompressed = decompressor.decompress(compressed)
-            
+
             import json
             result = json.loads(decompressed)
             assert result == test_data

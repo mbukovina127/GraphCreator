@@ -361,7 +361,8 @@ class CPGRelationsMixin(CPGBase):
                 block_node = ASTUtils.first_node_of_type(node.parent, "block")
                 symbol = self._lst.scope_lookup_by_name(block_node.id, name)
                 if symbol is not None:
-                    var_node = self._create_knowledge_node(identifier, file_path, type="local_variable_declaration")
+                    var_node = self._create_knowledge_node(identifier, file_path, type="identifier",
+                                                           properties={"name": name})
                     self._create_knowledge_edge(k_node["_key"], var_node["_key"], Edges.DECLARES)
             if identifier.next_sibling is None or identifier.next_sibling.type != ",":
                 break

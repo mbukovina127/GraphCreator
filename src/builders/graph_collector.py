@@ -437,7 +437,7 @@ class GraphCollector(GraphCollectorBase):
         for result in results:
             self.results[result["file"]] = result
 
-    def export_cpg_v1(self, project_id: str) -> Dict[str, Any]:
+    def export_cpg_schema(self, project_id: str) -> Dict[str, Any]:
         """Export the merged graph in CPG v1 schema format."""
         import datetime
 
@@ -458,7 +458,7 @@ class GraphCollector(GraphCollectorBase):
                 "while_statement": "CONTROL_STRUCTURE", "for_statement": "CONTROL_STRUCTURE",
                 "repeat_statement": "CONTROL_STRUCTURE", "block": "BLOCK",
                 "comment": "COMMENT", "module": "NAMESPACE", "chunk": "FILE",
-                "metric": "UNKNOWN", "directory": "DIRECTORY",
+                "metric": "METRIC", "directory": "DIRECTORY",
             }
             return mapping.get(internal_type, "UNKNOWN")
 

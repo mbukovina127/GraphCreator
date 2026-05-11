@@ -1,68 +1,47 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "schema_lua/v1/cpg.edge.schema.json",
+  "$id": "schema/v1/cpg.edge.schema.json",
   "title": "Universal CPG Edge (v1)",
   "type": "object",
   "required": [
-    "_from",
-    "_to",
-    "relation"
+    "source",
+    "target",
+    "type"
   ],
   "additionalProperties": false,
   "properties": {
-    "_from": {
+    "source": {
       "type": "string",
-      "description": "The _key of the source node."
+      "description": "The id of the source node ('{project_id}:{internal_key}')."
     },
-    "_to": {
+    "target": {
       "type": "string",
-      "description": "The _key of the target node."
+      "description": "The id of the target node ('{project_id}:{internal_key}')."
     },
-    "relation": {
+    "type": {
       "type": "string",
-      "description": "Semantic relationship type from the Edges enum in dto/edges.py.",
+      "description": "Mapped CPG edge type (derived from internal relation via export_cpg_v1).",
       "enum": [
-        "defines",
-        "declares",
-        "contains",
-        "imports",
-        "has_block",
-        "has_parameters",
-        "has_field",
-        "has_argument",
-        "has_condition",
-        "refers_to",
-        "calls",
-        "returns",
-        "flows_to",
-        "initializes",
-        "assigns_to",
-        "inside_of",
-        "executes",
-        "is",
-        "child_of",
-        "has_metrics",
         "AST_CHILD",
-        "has_parameter",
-        "documents",
-        "has_scope",
-        "nested",
-        "captures",
-        "reaches"
+        "CONTAINS",
+        "FLOWS_TO",
+        "CALLS",
+        "DEFINES",
+        "DECLARES",
+        "REFERS_TO",
+        "HAS_PARAMETER",
+        "RETURNS",
+        "IMPORTS"
       ]
     },
     "properties": {
       "type": "object",
-      "description": "Optional edge metadata.",
+      "description": "Edge metadata.",
       "additionalProperties": true,
       "properties": {
-        "index": {
-          "type": "integer",
-          "description": "Positional index of an argument or parameter in the call/definition."
-        },
-        "operator": {
+        "relation": {
           "type": "string",
-          "description": "Operator string for binary_expression edges (e.g. '+', '..', '==')."
+          "description": "Internal relation string before mapping (e.g. 'calls', 'refers_to')."
         }
       }
     }

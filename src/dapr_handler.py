@@ -42,10 +42,10 @@ GRAPH_STORE_ADAPTER_APP_ID = os.getenv("GRAPH_STORE_ADAPTER_APP_ID", "graph-stor
 PUBSUB_NAME = os.getenv("PUBSUB_NAME", "rabbitmq-pubsub")
 
 # Default schema path (absolute for workspace, or relative for container)
-CPG_SCHEMA_PATH = os.getenv("CPG_SCHEMA_PATH", "/var/home/roman/Projects/BcArchitectureC4/schema/v1/cpg.export.schema.json")
+CPG_SCHEMA_PATH = os.getenv("CPG_SCHEMA_PATH", "/var/home/roman/Projects/BcArchitectureC4/schema/v2/cpg.export.schema.json")
 if not os.path.exists(CPG_SCHEMA_PATH):
     # Try relative paths (../ for container, ../../ for local dev)
-    for rel_path in ["../schema/v1/cpg.export.schema.json", "../../schema/v1/cpg.export.schema.json"]:
+    for rel_path in ["../schema/v2/cpg.export.schema.json", "../../schema/v2/cpg.export.schema.json"]:
         potential_path = os.path.abspath(os.path.join(os.path.dirname(__file__), rel_path))
         if os.path.exists(potential_path):
             CPG_SCHEMA_PATH = potential_path
@@ -204,7 +204,7 @@ class LuaCodeAnalyzerService:
                 schema = json.load(f)
             
             # The export schema references node and edge schemas via relative paths.
-            # The $id in the schemas (e.g., "schema/v1/cpg.node.schema.json") requires
+            # The $id in the schemas (e.g., "schema/v2/cpg.node.schema.json") requires
             # the base URI to be the root directory containing the 'schema' folder.
             schema_dir = os.path.dirname(CPG_SCHEMA_PATH)
             base_dir = os.path.dirname(os.path.dirname(schema_dir))
@@ -265,7 +265,7 @@ class LuaCodeAnalyzerService:
             gc.collect(ray_results, extract_dir)
 
             # Export CPG v1 format
-            cpg_v1_data = gc.export_cpg_v1(project_id)
+            cpg_v1_data = gc.export_cpg_schema(project_id)
             
             # Save CPG v1 copy to /tmp
             cpg_copy_path = os.path.join(tempfile.gettempdir(), f"cpg_v1_{project_id}.json")

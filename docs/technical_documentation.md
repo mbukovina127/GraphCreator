@@ -800,7 +800,7 @@ from builders.graph_collector import GraphCollector
 ray.init(num_cpus=4, runtime_env={"env_vars": {"PYTHONPATH": "src"}})
 
 orchestrator = RayOrchestrator()
-futures = orchestrator.distribute_work(files)   # files = [{"path": "/abs/path/file.lua"}, ...]
+futures = orchestrator.distribute_work(files)  # files = [{"path": "/abs/path/file.lua"}, ...]
 results = [r for r in ray.get(futures) if r is not None]
 
 gc = GraphCollector()
@@ -812,8 +812,9 @@ print(f"Knowledge uzlov: {len(gc._knowledge_nodes)}")
 print(f"Knowledge hrán:  {len(gc._knowledge_edges)}")
 
 # Export do CPG v1
-cpg = gc.export_cpg_v1("moj-projekt")
+cpg = gc.export_cpg_schema("moj-projekt")
 import json
+
 with open("output_cpg.json", "w") as f:
     json.dump(cpg, f, indent=2)
 

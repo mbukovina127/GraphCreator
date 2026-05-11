@@ -1,0 +1,240 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "schema/v2/cpg.node.schema.json",
+  "title": "Universal CPG Node (v2)",
+  "description": "Validates a single node in the export format produced by GraphCollector.export_cpg_v1().",
+  "type": "object",
+  "required": ["id", "type"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique node identifier in the export. Format: '{project_id}:{internal_key}'."
+    },
+    "type": {
+      "type": "string",
+      "description": "Mapped CPG node type — derived from the internal type by export_cpg_v1().",
+      "enum": [
+        "FILE",
+        "DIRECTORY",
+        "FUNCTION",
+        "VARIABLE",
+        "IDENTIFIER",
+        "LITERAL",
+        "CALL",
+        "CONTROL_STRUCTURE",
+        "BLOCK",
+        "COMMENT",
+        "NAMESPACE",
+        "METRIC",
+        "UNKNOWN"
+      ]
+    },
+    "location": {
+      "type": "object",
+      "description": "Source location. Present on nodes that originate from an AST node with byte offsets.",
+      "additionalProperties": false,
+      "properties": {
+        "start_offset": {
+          "type": ["integer", "null"],
+          "description": "Byte offset of the node's first character in the source file. Null for synthetic nodes."
+        },
+        "end_offset": {
+          "type": ["integer", "null"],
+          "description": "Byte offset one past the node's last character. Null for synthetic nodes."
+        },
+        "file": {
+          "type": "string",
+          "description": "Absolute path of the source file this node belongs to."
+        }
+      }
+    },
+    "properties": {
+      "type": "object",
+      "description": "Type-specific metadata. Always contains 'kind' (internal type string) and 'language'.",
+      "additionalProperties": true,
+      "properties": {
+
+        "kind": {
+          "type": "string",
+          "description": "Internal CPG type before export mapping (e.g. 'local_function_definition', 'for_statement'). Mirrors the 'type' field in the internal knowledge graph."
+        },
+        "language": {
+          "type": "string",
+          "description": "Source language of this node (always 'lua' for this pipeline)."
+        },
+        "code": {
+          "type": ["string", "null"],
+          "description": "Source text of the originating AST node. Empty string for synthetic nodes (directory, metric)."
+        },
+
+        "name": {
+          "type": "string",
+          "description": "Symbol name. Present on FUNCTION, VARIABLE, IDENTIFIER, CALL, and index_expression nodes."
+        },
+        "field": {
+          "type": "string",
+          "description": "Field name for dot-index expressions (obj.field). Present on IDENTIFIER nodes with kind='index_expression'."
+        },
+        "write": {
+          "type": "string",
+          "description": "Set to 'True' on IDENTIFIER nodes that appear on the left-hand side of an assignment statement."
+        },
+
+        "initialized": {
+          "type": "string",
+          "description": "Set to 'True' when a VARIABLE (local_variable_declaration) node has an initializer expression."
+        },
+        "is_table": {
+          "type": "string",
+          "description": "Set to 'True' when a VARIABLE node is initialised from a table constructor."
+        },
+
+        "module_path": {
+          "type": "string",
+          "description": "Dotted module path for module_import nodes (e.g. 'math.utils'). Present on VARIABLE nodes with kind='module_import'."
+        },
+        "module_name": {
+          "type": "string",
+          "description": "The module's own declared name. Present on NAMESPACE nodes with kind='module'."
+        },
+
+        "table_keys": {
+          "type": "string",
+          "description": "Comma-separated field keys for table_constructor nodes (e.g. 'key1,key2,1,2'). Positional entries use their 1-based numeric index."
+        },
+        "value": {
+          "type": "string",
+          "description": "Raw source text of a LITERAL node (number, string, boolean, nil)."
+        },
+
+        "halstead_metrics": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Halstead complexity metrics computed for this node's subtree.",
+          "properties": {
+            "n1": {"type": "number", "description": "Number of distinct operators."},
+            "n2": {"type": "number", "description": "Number of distinct operands."},
+            "N1": {"type": "number", "description": "Total number of operator occurrences."},
+            "N2": {"type": "number", "description": "Total number of operand occurrences."},
+            "V": {"type": "number", "description": "Vocabulary size (n1 + n2)."},
+            "D": {"type": "number", "description": "Difficulty: (n1/2) * (N2/n2)."},
+            "E": {"type": "number", "description": "Effort: D * V."},
+            "T": {"type": "number", "description": "Estimated implementation time in seconds: E / 18."},
+            "B": {"type": "number", "description": "Estimated number of bugs: V / 3000."}
+          }
+        },
+        "loc": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Lines-of-code breakdown for this node's subtree.",
+          "properties": {
+            "total":       {"type": "integer", "description": "Total lines including blank and comment lines."},
+            "blank":       {"type": "integer", "description": "Lines that are entirely whitespace."},
+            "commented":   {"type": "integer", "description": "Lines that contain only a comment."},
+            "nonempty":    {"type": "integer", "description": "Non-blank lines (code + comment lines)."},
+            "code":        {"type": "integer", "description": "Lines containing executable source code."},
+            "comment_pct": {"type": "number",  "description": "Ratio of comment lines to total lines (0–1)."}
+          }
+        },
+        "cyclomatic_complexity": {
+          "type": "integer",
+          "description": "McCabe cyclomatic complexity of this node's subtree. 1 base + 1 per decision point (if, elseif, for, while)."
+        },
+
+        "variable_metrics": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Variable usage counts for FUNCTION nodes.",
+          "properties": {
+            "local_vars_current": {"type": "integer", "description": "Local variables declared directly in this function's body."},
+            "local_vars_nested":  {"type": "integer", "description": "Local variables declared in nested scopes within this function."},
+            "params":             {"type": "integer", "description": "Number of formal parameters."}
+          }
+        },
+        "dependency": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Inter-function dependency metrics for FUNCTION nodes.",
+          "properties": {
+            "depends_on":  {"type": "array",   "items": {"type": "string"}, "description": "Node IDs of functions this function calls."},
+            "depended_by": {"type": "array",   "items": {"type": "string"}, "description": "Node IDs of functions that call this function."}
+          }
+        },
+        "global_var_access": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Global variable access counts for FUNCTION nodes.",
+          "properties": {
+            "global_vars_read":    {"type": "integer", "description": "Number of global variable reads inside this function."},
+            "global_vars_written": {"type": "integer", "description": "Number of global variable writes inside this function."}
+          }
+        },
+        "statement_usage": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Statement-type frequency counts for FILE/chunk nodes.",
+          "properties": {
+            "GenericFor":     {"type": "integer"},
+            "NumericFor":     {"type": "integer"},
+            "If":             {"type": "integer"},
+            "Assign":         {"type": "integer"},
+            "LocalAssign":    {"type": "integer"},
+            "FunctionCall":   {"type": "integer"},
+            "LocalFunction":  {"type": "integer"},
+            "GlobalFunction": {"type": "integer"}
+          }
+        },
+        "function_counts": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Function-definition counts per FILE/chunk node.",
+          "properties": {
+            "total":  {"type": "integer", "description": "Total function definitions in this file."},
+            "global": {"type": "integer", "description": "Global function definitions."},
+            "local":  {"type": "integer", "description": "Local function definitions."}
+          }
+        },
+        "info_flow": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Information-flow interface metrics for FUNCTION nodes.",
+          "properties": {
+            "args_in":              {"type": "integer", "description": "Number of input arguments (arity)."},
+            "args_out":             {"type": "integer", "description": "Number of values in the return statement."},
+            "interface_complexity": {"type": "number",  "description": "args_in * args_out."}
+          }
+        },
+
+        "num_files": {
+          "type": "integer",
+          "description": "Project-level metric node: total number of FILE nodes in the graph."
+        },
+        "num_modules": {
+          "type": "integer",
+          "description": "Project-level metric node: total number of NAMESPACE (module) nodes."
+        },
+        "avg_functions_per_file": {
+          "type": "number",
+          "description": "Project-level metric node: average number of function definitions per file."
+        },
+        "max_functions_in_file": {
+          "type": "integer",
+          "description": "Project-level metric node: maximum function count in any single file."
+        },
+        "min_functions_in_file": {
+          "type": "integer",
+          "description": "Project-level metric node: minimum function count in any single file."
+        },
+        "avg_lines_per_function": {
+          "type": "number",
+          "description": "Project-level metric node: average total LOC per function across all files."
+        },
+        "avg_comment_pct": {
+          "type": "number",
+          "description": "Project-level metric node: average comment-line ratio across all files."
+        }
+      }
+    }
+  }
+}
